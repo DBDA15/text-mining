@@ -17,3 +17,9 @@ hs_err_pid*
 #tagger
 *.tagger
 *.tagger.props
+
+#eclipse
+.classpath
+.project
+*.prefs
+bin/

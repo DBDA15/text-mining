@@ -2,15 +2,14 @@ package de.hpi.fgis.dbda.textmining.entrance_task;
 
 import java.io.Serializable;
 
+import edu.stanford.nlp.tagger.maxent.MaxentTagger;
+
 import org.apache.spark.SparkConf;
-import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.Function;
-import org.apache.spark.api.java.function.PairFunction;
+import org.apache.spark.api.java.function.Function2;
 
-import scala.Tuple2;
-import edu.stanford.nlp.tagger.maxent.MaxentTagger;
+import java.util.*;
 
 /**
  * Hello world!
@@ -20,24 +19,29 @@ public class Main
 {
     public static void main( String[] args )
     {
-    	final MaxentTagger tagger = new MaxentTagger("pos_tagger/taggers/english-bidirectional-distsim.tagger");
-    	
     	// String tagged = tagger.tagString(sample);
-        
+
         // initialize spark environment
         SparkConf config = new SparkConf().setAppName(Main.class.getName());
         config.set("spark.hadoop.validateOutputSpecs", "false");
-        
+
         try(JavaSparkContext context = new JavaSparkContext(config)) {
         	 JavaRDD<String> lineItems = context
         	    .textFile("data/nyt.1987.tsv")
-	        	.map(
-	            new Function<String, String>() {
-	              public String call(String line) {
-	                LineItem li = new LineItem(line);
-	                return li.TEXT;
-	              }
-	            });
+	        	.mapPartitionsWithIndex(
+                        new Function2<Integer, Iterator<String>, Iterator<String>>() {
+                            public Iterator<String> call(Integer i, Iterator<String> iter) {
+                                final MaxentTagger tagger = new MaxentTagger("pos_tagger/taggers/english-bidirectional-distsim.tagger");
+                                List res = new ArrayList();
+                                while (iter.hasNext()) {
+                                    String str = iter.next();
+                                    LineItem li = new LineItem(str);
+                                    String tagged = tagger.tagString(li.TEXT);
+                                    res.add(tagged);
+                                }
+                                return res.iterator();
+                            }
+                        }, true);
 	            
 	            lineItems.saveAsTextFile("data/test");
         }

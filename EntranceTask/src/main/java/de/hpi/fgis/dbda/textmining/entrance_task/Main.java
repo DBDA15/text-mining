@@ -61,49 +61,93 @@ public class Main
                                 }
                             }
                     );
-            //generate Pairs of <word, <tag, 1>>
+            //generate Pairs of <<word,tag>,1>
             JavaPairRDD<Tuple2<String, String>, Integer> pairs = wordTags
             		.mapToPair(new PairFunction<String, Tuple2<String, String>, Integer>() {
 
-						@Override
-						public Tuple2<Tuple2<String, String>, Integer> call(String arg0)
-								throws Exception {
-							String[] splitted = arg0.split("_");
-							Tuple2 inner = new Tuple2<String, String>(splitted[0], splitted[1]);
-							Tuple2 outer = new Tuple2<Tuple2, Integer>(inner, 1);
-							return outer;
-						}
-					});
-            
-            JavaPairRDD<Tuple2<String, String>, Integer> counts = pairs.reduceByKey(new Function2<Integer, Integer, Integer>() {
+                        @Override
+                        public Tuple2<Tuple2<String, String>, Integer> call(String arg0)
+                                throws Exception {
+                            String[] splitted = arg0.split("_");
+                            Tuple2 inner = new Tuple2<>(splitted[0], splitted[1]);
+                            Tuple2 outer = new Tuple2<>(inner, 1);
+                            return outer;
+                        }
+                    });
 
-				@Override
-				public Integer call(Integer arg0, Integer arg1)
-						throws Exception {					
-					return arg0+arg1;
-				}
-			});
-            
-            JavaPairRDD<Tuple3<String, String, Integer>, Void> beforeSort = counts.mapToPair(new PairFunction<Tuple2<Tuple2<String, String>,Integer>, Tuple3<String, String, Integer>, Void>() {
+            //##################################
+            //most common tag per word
+            //##################################
 
-				@Override
-				public Tuple2<Tuple3<String, String, Integer>, Void> call(
-						Tuple2<Tuple2<String, String>, Integer> arg0) throws Exception {
-					Tuple3<String, String, Integer> key = new Tuple3<String, String, Integer>(arg0._1._1, arg0._1._2, arg0._2);
-					return new Tuple2<Tuple3<String,String,Integer>,Void>(key, null);
-				}
-			});
-			
-            JavaPairRDD<Tuple3<String, String, Integer>, Void> sorted = beforeSort.sortByKey(new WordComp());
-                        
-            // map -> split "_" -> Tuple ( Tuple (word, tag), count=1)
-    		// reduceByKey (Tuple(word,tag))
-    		// sort by count
-    		// tag per word: distinct word
-    		// word per tag: distinct tag
-    		// different tags per word: 
-            
-            sorted.saveAsTextFile("data/test");
+            //sum counts <<word, tag>, n>
+            JavaPairRDD<Tuple2<String, String>, Integer> counts = pairs
+                    .reduceByKey(new Function2<Integer, Integer, Integer>() {
+
+                        @Override
+                        public Integer call(Integer arg0, Integer arg1)
+                                throws Exception {
+                            return arg0 + arg1;
+                        }
+                    });
+
+            //transform to pairs <word, <tag, n>>
+            JavaPairRDD<String, Tuple2<String, Integer>> transformedCounts = counts
+                    .mapToPair(new PairFunction<Tuple2<Tuple2<String, String>, Integer>, String, Tuple2<String, Integer>>() {
+                        @Override
+                        public Tuple2<String, Tuple2<String, Integer>> call(Tuple2<Tuple2<String, String>, Integer> t) throws Exception {
+                            Tuple2 inner = new Tuple2<>(t._1._2, t._2);
+                            return new Tuple2(t._1._1, inner);
+                        }
+                    });
+
+            //reduce to top tags per word
+            JavaPairRDD<String, Tuple2<String, Integer>> topTags = transformedCounts
+                    .reduceByKey(new Function2<Tuple2<String, Integer>, Tuple2<String, Integer>, Tuple2<String, Integer>>() {
+                        @Override
+                        public Tuple2<String, Integer> call(Tuple2<String, Integer> tag1, Tuple2<String, Integer> tag2) throws Exception {
+                            if (tag1._2 > tag2._2) {
+                                return tag1;
+                            } else {
+                                return tag2;
+                            }
+                        }
+                    });
+
+            transformedCounts.sortByKey().saveAsTextFile("data/besttag");
+
+            //##################################
+            //most different tags per word
+            //##################################
+
+            //distinct <word, tag>, 1>
+            JavaPairRDD<Tuple2<String, String>, Integer> distinctPairs = pairs.distinct();
+
+            //transform to pairs <word, 1>
+            JavaPairRDD<String, Integer> foo = distinctPairs
+                    .mapToPair(new PairFunction<Tuple2<Tuple2<String, String>, Integer>, String, Integer>() {
+                        @Override
+                        public Tuple2<String, Integer> call(Tuple2<Tuple2<String, String>, Integer> t) throws Exception {
+                            return new Tuple2<String, Integer>(t._1._1, 1);
+                        }
+                    });
+
+            //summed up <word, n>
+            JavaPairRDD<String, Integer> counted = foo
+                    .reduceByKey(new Function2<Integer, Integer, Integer>() {
+                        @Override
+                        public Integer call(Integer integer1, Integer integer2) throws Exception {
+                            return integer1 + integer2;
+                        }
+                    });
+
+            JavaRDD<Tuple2<String, Integer>> tagsBeforeSort = counted.map(new Function<Tuple2<String, Integer>, Tuple2<String, Integer>>() {
+                @Override
+                public Tuple2<String, Integer> call(Tuple2<String, Integer> stringIntegerTuple2) throws Exception {
+                    return new Tuple2<String, Integer>(stringIntegerTuple2._1, stringIntegerTuple2._2);
+                }
+            });
+
+            counted.sortByKey().saveAsTextFile("data/mosttags");
         }
     }
 
@@ -116,6 +160,16 @@ public class Main
 		}
 
       }
+
+    static class TagComp implements Comparator<Tuple2<String, Integer>>, Serializable {
+
+        @Override
+        public int compare(Tuple2<String, Integer> o1,
+                           Tuple2<String, Integer> o2) {
+            return Integer.compare(o2._2(), o1._2());
+        }
+
+    }
 
     static class LineItem implements Serializable {
         Integer INDEX;

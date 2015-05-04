@@ -3,7 +3,6 @@ package de.hpi.fgis.dbda.textmining.entrance_task;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Comparator;
-
 import java.util.List;
 
 import org.apache.spark.SparkConf;
@@ -146,8 +145,13 @@ public class Main
                     return new Tuple2<String, Integer>(stringIntegerTuple2._1, stringIntegerTuple2._2);
                 }
             });
+            
+            tagsBeforeSort.saveAsTextFile("data/mosttags");
+            
+            List<Tuple2<String, Integer>> sorted = tagsBeforeSort.
+            	takeOrdered(10, new TagComp());
 
-            counted.sortByKey().saveAsTextFile("data/mosttags");
+            System.out.println(sorted);
         }
     }
 

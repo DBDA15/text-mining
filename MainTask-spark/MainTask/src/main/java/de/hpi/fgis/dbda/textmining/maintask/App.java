@@ -1,32 +1,29 @@
 package de.hpi.fgis.dbda.textmining.maintask;
 
-import edu.stanford.nlp.ie.AbstractSequenceClassifier;
-import edu.stanford.nlp.ie.crf.*;
-import edu.stanford.nlp.io.IOUtils;
-import edu.stanford.nlp.ling.CoreLabel;
-import edu.stanford.nlp.ling.CoreAnnotations;
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Serializable;
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.spark.SparkConf;
-import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function;
-import org.apache.spark.api.java.function.Function2;
-import org.apache.spark.api.java.function.PairFunction;
-import scala.Tuple2;
-import scala.Tuple3;
 
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
+import edu.stanford.nlp.ie.AbstractSequenceClassifier;
+import edu.stanford.nlp.ie.crf.CRFClassifier;
+import edu.stanford.nlp.ling.CoreLabel;
+import edu.stanford.nlp.ling.HasWord;
+import edu.stanford.nlp.ling.Sentence;
+import edu.stanford.nlp.process.DocumentPreprocessor;
 
 public class App
 {
 
-    private static String classifierPath = "ner-tagger/classifiers/english.all.3class.nodistsim.crf.ser.gz";
+    private static String classifierPath = "ner-tagger/classifiers/english.all.3class.distsim.crf.ser.gz";
 
     private static transient AbstractSequenceClassifier<CoreLabel> classifier = null;
 
@@ -40,27 +37,43 @@ public class App
         try(JavaSparkContext context = new JavaSparkContext(config)) {
             JavaRDD<String> lineItems = context
                     .textFile("data/short.tsv");
+            
+            
+			JavaRDD<String> splittedSentences = lineItems
+					.flatMap(new FlatMapFunction<String, String>() {
 
-            //tag articles
-            JavaRDD<String> taggedLines = lineItems
-                    .map(
-                            new Function<String, String>() {
-                                public String call(String line) {
-                                    if (classifier == null) {
-                                        try {
-                                            classifier = CRFClassifier.getClassifier(classifierPath);
-                                        } catch (IOException e) {
-                                            e.printStackTrace();
-                                        } catch (ClassNotFoundException e) {
-                                            e.printStackTrace();
-                                        }
-                                    }
-                                    LineItem li = new LineItem(line);
-                                    String tagged = classifier.classifyToString(li.TEXT);
-                                    System.out.println(tagged);
-                                    return tagged;
-                                }
-                            });
+						public Iterable<String> call(String t) throws Exception {
+							LineItem li = new LineItem(t);
+							Reader reader = new StringReader(li.TEXT);
+							DocumentPreprocessor dp = new DocumentPreprocessor(reader);
+							List<String> sentenceList = new ArrayList<String>();
+							for (List<HasWord> sentence : dp) {
+								String sentenceString = Sentence.listToString(sentence);
+								sentenceList.add(sentenceString.toString());
+							}
+							return sentenceList;
+						}
+					});
+
+			// tag articles
+			JavaRDD<String> taggedSentences = splittedSentences
+					.map(new Function<String, String>() {
+						public String call(String sentence) {
+							if (classifier == null) {
+								try {
+									classifier = CRFClassifier.getClassifier(classifierPath);
+								} catch (IOException e) {
+									e.printStackTrace();
+								} catch (ClassNotFoundException e) {
+									e.printStackTrace();
+								}
+							}
+							String tagged = classifier.classifyToString(sentence);
+							return tagged;
+						}
+					});
+
+			taggedSentences.saveAsTextFile("data/test");
 
         }
     }

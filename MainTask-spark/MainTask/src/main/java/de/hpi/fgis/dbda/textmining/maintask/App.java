@@ -36,7 +36,7 @@ public class App
 
         try(JavaSparkContext context = new JavaSparkContext(config)) {
             JavaRDD<String> lineItems = context
-                    .textFile("data/short.tsv");
+                    .textFile("https://s3-eu-west-1.amazonaws.com/dbda-text-mining/input_data/nyt.1987.tsv");
             
             
 			JavaRDD<String> splittedSentences = lineItems

@@ -29,6 +29,9 @@ public class App
 
     public static void main( String[] args )
     {
+    	
+        final String lineItemFile = args[0];
+        final String outputFile = args[1];
 
         // initialize spark environment
         SparkConf config = new SparkConf().setAppName(App.class.getName());
@@ -36,7 +39,7 @@ public class App
 
         try(JavaSparkContext context = new JavaSparkContext(config)) {
             JavaRDD<String> lineItems = context
-                    .textFile("https://s3-eu-west-1.amazonaws.com/dbda-text-mining/input_data/nyt.1987.tsv");
+                    .textFile(lineItemFile);
             
             
 			JavaRDD<String> splittedSentences = lineItems
@@ -73,7 +76,7 @@ public class App
 						}
 					});
 
-			taggedSentences.saveAsTextFile("data/test");
+			taggedSentences.saveAsTextFile(outputFile);
 
         }
     }

@@ -58,6 +58,8 @@ public class App
 						}
 					});
 
+			splittedSentences.saveAsTextFile(outputFile+"/sentences");
+
 			// tag articles
 			JavaRDD<String> taggedSentences = splittedSentences
 					.map(new Function<String, String>() {
@@ -76,7 +78,7 @@ public class App
 						}
 					});
 
-			taggedSentences.saveAsTextFile(outputFile);
+			taggedSentences.saveAsTextFile(outputFile+"/tagged");
 
         }
     }

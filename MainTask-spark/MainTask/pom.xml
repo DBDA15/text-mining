@@ -36,6 +36,15 @@
 	</dependencies>
 	
 	<build>
+	<resources>
+      <resource>
+        <directory>ner-tagger/classifiers</directory>
+        <includes>
+          <include>english.all.3class.distsim.crf.ser.gz</include>
+          <include>english.all.3class.distsim.prop</include>
+          </includes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

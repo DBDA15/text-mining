@@ -1,5 +1,6 @@
 package de.hpi.fgis.dbda.textmining.maintask;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Serializable;
@@ -15,17 +16,17 @@ import org.apache.spark.api.java.function.Function;
 
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
 import edu.stanford.nlp.ie.crf.CRFClassifier;
-import edu.stanford.nlp.ling.CoreLabel;
 import edu.stanford.nlp.ling.HasWord;
 import edu.stanford.nlp.ling.Sentence;
 import edu.stanford.nlp.process.DocumentPreprocessor;
+import edu.stanford.nlp.util.CoreMap;
 
 public class App
 {
 
-    private static String classifierPath = "ner-tagger/classifiers/english.all.3class.distsim.crf.ser.gz";
+    private static String classifierPath = "/english.all.3class.distsim.crf.ser";
 
-    private static transient AbstractSequenceClassifier<CoreLabel> classifier = null;
+    private static transient AbstractSequenceClassifier<? extends CoreMap> classifier = null;
 
     public static void main( String[] args )
     {
@@ -63,14 +64,21 @@ public class App
 			// tag articles
 			JavaRDD<String> taggedSentences = splittedSentences
 					.map(new Function<String, String>() {
-						public String call(String sentence) {
+						public String call(String sentence) {							
 							if (classifier == null) {
+								final BufferedInputStream in = new BufferedInputStream(App.class.getResourceAsStream(classifierPath), 32 * 1024);
 								try {
-									classifier = CRFClassifier.getClassifier(classifierPath);
+									classifier = CRFClassifier.getClassifier(in);
 								} catch (IOException e) {
 									e.printStackTrace();
 								} catch (ClassNotFoundException e) {
 									e.printStackTrace();
+								} finally {
+									try {
+										in.close();
+									} catch (IOException e) {
+										e.printStackTrace();
+									}
 								}
 							}
 							String tagged = classifier.classifyToString(sentence);

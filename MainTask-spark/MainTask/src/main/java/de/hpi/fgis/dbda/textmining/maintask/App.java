@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.spark.SparkConf;
+import org.apache.spark.SparkFiles;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
@@ -25,6 +26,7 @@ public class App
 {
 
     private static String classifierPath = "/english.all.3class.distsim.crf.ser";
+    private static String classifierPropPath = "/english.all.3class.distsim.prop";
 
     private static transient AbstractSequenceClassifier<? extends CoreMap> classifier = null;
 
@@ -60,25 +62,21 @@ public class App
 					});
 
 			splittedSentences.saveAsTextFile(outputFile+"/sentences");
+			
+			context.addFile(App.class.getResource(classifierPath).getFile());
+			context.addFile(App.class.getResource(classifierPropPath).getFile());
 
 			// tag articles
 			JavaRDD<String> taggedSentences = splittedSentences
 					.map(new Function<String, String>() {
 						public String call(String sentence) {							
 							if (classifier == null) {
-								final BufferedInputStream in = new BufferedInputStream(App.class.getResourceAsStream(classifierPath), 32 * 1024);
 								try {
-									classifier = CRFClassifier.getClassifier(in);
+									classifier = CRFClassifier.getClassifier(SparkFiles.get(classifierPath));
 								} catch (IOException e) {
 									return "IOException";
 								} catch (ClassNotFoundException e) {
 									return "ClassNotFoundException";
-								} finally {
-									try {
-										in.close();
-									} catch (IOException e) {
-										return "IOException in close";
-									}
 								}
 							}
 							String tagged = classifier.classifyToString(sentence);

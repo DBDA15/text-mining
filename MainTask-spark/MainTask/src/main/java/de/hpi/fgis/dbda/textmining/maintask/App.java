@@ -25,9 +25,6 @@ import edu.stanford.nlp.util.CoreMap;
 public class App
 {
 
-    private static String classifierPath = "/english.all.3class.distsim.crf.ser";
-    private static String classifierPropPath = "/english.all.3class.distsim.prop";
-
     private static transient AbstractSequenceClassifier<? extends CoreMap> classifier = null;
 
     public static void main( String[] args )
@@ -35,6 +32,8 @@ public class App
     	
         final String lineItemFile = args[0];
         final String outputFile = args[1];
+        final String classifierPath = args[2];
+        final String classifierPropPath = args[3];
 
         // initialize spark environment
         SparkConf config = new SparkConf().setAppName(App.class.getName());
@@ -63,8 +62,8 @@ public class App
 
 			splittedSentences.saveAsTextFile(outputFile+"/sentences");
 			
-			context.addFile(App.class.getResource(classifierPath).getFile());
-			context.addFile(App.class.getResource(classifierPropPath).getFile());
+			context.addFile(classifierPath);
+			context.addFile(classifierPropPath);
 
 			// tag articles
 			JavaRDD<String> taggedSentences = splittedSentences

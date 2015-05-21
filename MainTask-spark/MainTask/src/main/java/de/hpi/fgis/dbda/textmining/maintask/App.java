@@ -70,14 +70,14 @@ public class App
 								try {
 									classifier = CRFClassifier.getClassifier(in);
 								} catch (IOException e) {
-									e.printStackTrace();
+									return "IOException";
 								} catch (ClassNotFoundException e) {
-									e.printStackTrace();
+									return "ClassNotFoundException";
 								} finally {
 									try {
 										in.close();
 									} catch (IOException e) {
-										e.printStackTrace();
+										return "IOException in close";
 									}
 								}
 							}

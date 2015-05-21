@@ -5,8 +5,10 @@ import java.io.Reader;
 import java.io.Serializable;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -19,6 +21,9 @@ import edu.stanford.nlp.ling.CoreLabel;
 import edu.stanford.nlp.ling.HasWord;
 import edu.stanford.nlp.ling.Sentence;
 import edu.stanford.nlp.process.DocumentPreprocessor;
+import scala.Int;
+import scala.Tuple5;
+import scala.Tuple2;
 
 public class App
 {
@@ -32,6 +37,14 @@ public class App
     	
         final String lineItemFile = args[0];
         final String outputFile = args[1];
+
+        final List<String> task_entityTags = new ArrayList<>();
+        task_entityTags.add("ORGANIZATION");
+        task_entityTags.add("LOCATION");
+
+        final List<Tuple2> task_seedTuples = new ArrayList<>();
+        task_seedTuples.add(new Tuple2("Microsoft", "Redmond"));
+        task_seedTuples.add(new Tuple2("Parliament", "Emirates"));
 
         // initialize spark environment
         SparkConf config = new SparkConf().setAppName(App.class.getName());
@@ -78,7 +91,62 @@ public class App
 						}
 					});
 
-			taggedSentences.saveAsTextFile(outputFile+"/tagged");
+            taggedSentences.saveAsTextFile(outputFile+"/tagged");
+
+			JavaRDD<Tuple5> rawPatterns = taggedSentences
+                    .flatMap(new FlatMapFunction<String, Tuple5>() {
+                        @Override
+                        public Iterable<Tuple5> call(String sentence) throws Exception {
+                            List<Tuple5> patterns = new ArrayList<Tuple5>();
+                            String[] splittedSentence = sentence.split(" ");
+
+                            Integer tupleIndex = 0;
+                            for (Tuple2 seedTuple : task_seedTuples) {
+                                List<String> words = new ArrayList<String>();
+                                List<Integer> entity0sites = new ArrayList<Integer>();
+                                List<Integer> entity1sites = new ArrayList<Integer>();
+
+                                Integer wordIndex = 0;
+                                for (String wordEntity : splittedSentence) {
+                                    String[] splitted = wordEntity.split("/");
+                                    String word = splitted[0];
+                                    String entity = splitted[1];
+
+                                    words.add(word);
+                                    if (word == seedTuple._1() && entity == task_entityTags.get(0)) {
+                                        entity0sites.add(wordIndex);
+                                    } else if (word == seedTuple._2() && entity == task_entityTags.get(1)) {
+                                        entity1sites.add(wordIndex);
+                                    }
+
+                                    wordIndex++;
+                                }
+
+                                for (Integer entity0site : entity0sites) {
+                                    for (Integer entity1site : entity1sites) {
+                                        if (entity0site < entity1site) {
+                                            String beforeContext = StringUtils.join(words.subList(Math.max(0, entity0site - 5), entity0site), " ");
+                                            String betweenContext = StringUtils.join(words.subList(entity0site + 1, entity1site), " ");
+                                            String afterContext = StringUtils.join(words.subList(entity1site + 1, Math.min(words.size(), entity1site + 5)), " ");
+                                            Tuple5 pattern = new Tuple5(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext);
+                                            patterns.add(pattern);
+                                        } else {
+                                            String beforeContext = StringUtils.join(words.subList(Math.max(0, entity1site - 5), entity1site), " ");
+                                            String betweenContext = StringUtils.join(words.subList(entity1site + 1, entity0site), " ");
+                                            String afterContext = StringUtils.join(words.subList(entity0site + 1, Math.min(words.size(), entity0site + 5)), " ");
+                                            Tuple5 pattern = new Tuple5(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext);
+                                            patterns.add(pattern);
+                                        }
+                                    }
+                                }
+                            }
+
+                            return patterns;
+                        }
+                    });
+
+            rawPatterns.saveAsTextFile(outputFile+"/patterns");
+            System.out.println("Fertisch!");
 
         }
     }

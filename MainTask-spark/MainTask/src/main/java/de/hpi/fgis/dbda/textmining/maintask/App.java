@@ -1,5 +1,6 @@
 package de.hpi.fgis.dbda.textmining.maintask;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Serializable;
@@ -10,6 +11,7 @@ import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.spark.SparkConf;
+import org.apache.spark.SparkFiles;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
@@ -17,26 +19,25 @@ import org.apache.spark.api.java.function.Function;
 
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
 import edu.stanford.nlp.ie.crf.CRFClassifier;
-import edu.stanford.nlp.ling.CoreLabel;
 import edu.stanford.nlp.ling.HasWord;
 import edu.stanford.nlp.ling.Sentence;
 import edu.stanford.nlp.process.DocumentPreprocessor;
-import scala.Int;
 import scala.Tuple5;
 import scala.Tuple2;
+import edu.stanford.nlp.util.CoreMap;
 
 public class App
 {
 
-    private static String classifierPath = "ner-tagger/classifiers/english.all.3class.distsim.crf.ser.gz";
-
-    private static transient AbstractSequenceClassifier<CoreLabel> classifier = null;
+    private static transient AbstractSequenceClassifier<? extends CoreMap> classifier = null;
 
     public static void main( String[] args )
     {
     	
         final String lineItemFile = args[0];
         final String outputFile = args[1];
+        final String classifierPath = args[2];
+        final String classifierPropPath = args[3];
 
         final List<String> task_entityTags = new ArrayList<>();
         task_entityTags.add("ORGANIZATION");
@@ -72,18 +73,21 @@ public class App
 					});
 
 			splittedSentences.saveAsTextFile(outputFile+"/sentences");
+			
+			context.addFile(classifierPath);
+			context.addFile(classifierPropPath);
 
 			// tag articles
 			JavaRDD<String> taggedSentences = splittedSentences
 					.map(new Function<String, String>() {
-						public String call(String sentence) {
+						public String call(String sentence) {							
 							if (classifier == null) {
 								try {
-									classifier = CRFClassifier.getClassifier(classifierPath);
+									classifier = CRFClassifier.getClassifier(SparkFiles.get(classifierPath));
 								} catch (IOException e) {
-									e.printStackTrace();
+									return "IOException";
 								} catch (ClassNotFoundException e) {
-									e.printStackTrace();
+									return "ClassNotFoundException";
 								}
 							}
 							String tagged = classifier.classifyToString(sentence);

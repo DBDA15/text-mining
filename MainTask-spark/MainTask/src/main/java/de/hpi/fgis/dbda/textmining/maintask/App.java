@@ -96,7 +96,7 @@ public class App
                         @Override
                         public Iterable<Tuple5> call(String sentence) throws Exception {
                             //Create regex pattern that finds NER XML tags in the sentence (e.g. "<LOCATION>New York</LOCATION>")
-                            Pattern NERTagPattern = Pattern.compile("<([A-Z]+)>([a-zA-Z_0-9 ]+)</([A-Z]+)>");
+                            Pattern NERTagPattern = Pattern.compile("<([A-Z]+)>(.+?)</([A-Z]+)>");
                             Matcher NERMatcher = NERTagPattern.matcher(sentence);
 
                             //Store all tokens in a list of 2-tuples <string, NER tag>
@@ -120,6 +120,15 @@ public class App
 
                                 //Remember last processed character
                                 lastIndex = NERMatcher.end();
+                            }
+                            //Lastly, add the normal words (i.e. w/o NER tags) after the last NER tag
+                            //Add them as 2-tuples <string, "">
+                            String endString = sentence.substring(lastIndex, sentence.length());
+                            String[] splittedEndString = endString.split(" ");
+                            for (String word : splittedEndString) {
+                                if (!word.isEmpty()) {
+                                    tokenList.add(new Tuple2(word, ""));
+                                }
                             }
 
                             /*

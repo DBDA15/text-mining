@@ -5,12 +5,11 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.Serializable;
 import java.io.StringReader;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.commons.collections.map.HashedMap;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkFiles;
@@ -40,6 +39,32 @@ public class App
         return StringUtils.join(strings, separator);
     }
 
+    private static Map produceContext(List<Tuple2> tokenList) {
+        /*
+           Produce the context based on a given token list. A context is a HashMap that maps each token in the token
+           list to a weight. The more prominent or frequent a token is, the higher is the associated weight.
+         */
+        Map<String, Integer> termCounts = new HashedMap();
+
+        //Count how often each token occurs
+        Integer sumCounts = 0;
+        for (Tuple2<String, String> token : tokenList) {
+            if (!termCounts.containsKey(token._1())) {
+                termCounts.put(token._1(), 1);
+            } else {
+                termCounts.put(token._1(), termCounts.get(token._1()) + 1);
+            }
+            sumCounts += 1;
+        }
+
+        //Calculate token frequencies out of the counts
+        Map<String, Float> context = new HashedMap();
+        for (Map.Entry<String, Integer> entry : termCounts.entrySet()) {
+            context.put(entry.getKey(), (float) entry.getValue() / sumCounts);
+        }
+        return context;
+    }
+
     public static void main( String[] args )
     {
     	
@@ -54,7 +79,9 @@ public class App
         //Initialize list of seed tuples
         final List<Tuple2> task_seedTuples = new ArrayList<>();
         task_seedTuples.add(new Tuple2("Microsoft", "Redmond"));
-        task_seedTuples.add(new Tuple2("Parliament", "Emirates"));
+        task_seedTuples.add(new Tuple2("Google", "Palo Alto"));
+        task_seedTuples.add(new Tuple2("Apple", "Cupertino"));
+        task_seedTuples.add(new Tuple2("Exxon Corporation", "Irving"));
 
         //Initialize spark environment
         SparkConf config = new SparkConf().setAppName(App.class.getName());
@@ -128,16 +155,17 @@ public class App
                                 for (Integer entity0site : entity0sites) {
                                     for (Integer entity1site : entity1sites) {
                                         Integer windowSize = 5;
-                                        if (entity0site < entity1site) {
-                                            String beforeContext = joinTuples(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site), " ");
-                                            String betweenContext = joinTuples(tokenList.subList(entity0site + 1, entity1site), " ");
-                                            String afterContext = joinTuples(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)), " ");
+                                        Integer maxDistance = 5;
+                                        if (entity0site < entity1site && (entity1site - entity0site) <= maxDistance) {
+                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
+                                            Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
+                                            Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
                                             Tuple5 pattern = new Tuple5(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext);
                                             patterns.add(pattern);
-                                        } else {
-                                            String beforeContext = joinTuples(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site), " ");
-                                            String betweenContext = joinTuples(tokenList.subList(entity1site + 1, entity0site), " ");
-                                            String afterContext = joinTuples(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)), " ");
+                                        } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
+                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
+                                            Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
+                                            Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
                                             Tuple5 pattern = new Tuple5(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext);
                                             patterns.add(pattern);
                                         }

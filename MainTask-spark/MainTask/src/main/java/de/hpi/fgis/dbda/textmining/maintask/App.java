@@ -310,9 +310,29 @@ public class App
                     }
                 }
             }
+            
+            // build one pattern from cluster (centroid)
+            
+            // evaluate patterns
+            
+            // add patterns to pattern list
+            
+            // search new (+ old) tuples using patterns
+            
+            // evaluate tuples
+            
+            // add tuples to tuple list
+            
+            // find new patterns using new tuples
 
             //rawPatterns.saveAsTextFile(outputFile+"/patterns");
-            System.out.println(clusters);
+            
+            for (List<Tuple5> l : clusters) {
+            	for (Tuple5 t : l) {
+            		System.out.println(t.toString());
+            	}
+            }
+            
             System.out.println("Fertisch!");
 
         }

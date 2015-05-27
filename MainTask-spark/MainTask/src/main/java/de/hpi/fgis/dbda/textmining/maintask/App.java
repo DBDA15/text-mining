@@ -11,15 +11,23 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
 
+import akka.pattern.Patterns;
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
-import scala.Tuple5;
 import scala.Tuple2;
+import scala.Tuple3;
+import scala.Tuple5;
 import edu.stanford.nlp.util.CoreMap;
 
 public class App
 {
+	
+	private static Float similarityThreshold = 0.5f;
+	
+	private static int supportThreshold = 5;
 
     private static transient AbstractSequenceClassifier<? extends CoreMap> classifier = null;
+    
+    private static final List<Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>>> patterns = new ArrayList<Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>>>();
 
     private static String joinTuples(List<Tuple2> tupleList, String separator) {
         /*
@@ -150,6 +158,51 @@ public class App
         return calculateDegreeOfMatch(pattern, centroid);
     }
 
+    private static List<Tuple2> findTuples(String sentence) {
+    	//Create regex pattern that finds NER XML tags in the sentence (e.g. "<LOCATION>New York</LOCATION>")
+        Pattern NERTagPattern = Pattern.compile("<([A-Z]+)>(.+?)</([A-Z]+)>");
+        Matcher NERMatcher = NERTagPattern.matcher(sentence);
+
+        //Store all tokens in a list of 2-tuples <string, NER tag>
+        List<Tuple2> tokenList = new ArrayList();
+        Integer lastIndex = 0;
+        //Iterate through all occurences of the regex pattern
+        while (NERMatcher.find()) {
+            //First, add the normal words (i.e. w/o NER tags) to the token list
+            //Add them as 2-tuples <string, "">
+            String stringBefore = sentence.substring(lastIndex, NERMatcher.start());
+            String[] splittedStringBefore = stringBefore.split(" ");
+            for (String word : splittedStringBefore) {
+                if (!word.isEmpty()) {
+                    tokenList.add(new Tuple2(word, ""));
+                }
+            }
+
+            //Then, add the NER-tagged tokens to the token list
+            //Add them as 2 tuples <string, NER tag>
+            tokenList.add(new Tuple2(NERMatcher.group(2), NERMatcher.group(1)));
+
+            //Remember last processed character
+            lastIndex = NERMatcher.end();
+        }
+        //Lastly, add the normal words (i.e. w/o NER tags) after the last NER tag
+        //Add them as 2-tuples <string, "">
+        String endString = sentence.substring(lastIndex, sentence.length());
+        String[] splittedEndString = endString.split(" ");
+        for (String word : splittedEndString) {
+            if (!word.isEmpty()) {
+                tokenList.add(new Tuple2(word, ""));
+            }
+        }
+		return tokenList;
+	}   
+
+	private static void updatePatternSelectivity(
+			Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> pattern,
+			Tuple2<String, String> candidateTuple) {
+		patterns.get(patterns.indexOf(pattern))._2.add(candidateTuple);		
+	}
+
     public static void main( String[] args )
     {
 
@@ -191,42 +244,9 @@ public class App
                     .flatMap(new FlatMapFunction<String, Tuple5>() {
                         @Override
                         public Iterable<Tuple5> call(String sentence) throws Exception {
-                            //Create regex pattern that finds NER XML tags in the sentence (e.g. "<LOCATION>New York</LOCATION>")
-                            Pattern NERTagPattern = Pattern.compile("<([A-Z]+)>(.+?)</([A-Z]+)>");
-                            Matcher NERMatcher = NERTagPattern.matcher(sentence);
-
-                            //Store all tokens in a list of 2-tuples <string, NER tag>
-                            List<Tuple2> tokenList = new ArrayList();
-                            Integer lastIndex = 0;
-                            //Iterate through all occurences of the regex pattern
-                            while (NERMatcher.find()) {
-                                //First, add the normal words (i.e. w/o NER tags) to the token list
-                                //Add them as 2-tuples <string, "">
-                                String stringBefore = sentence.substring(lastIndex, NERMatcher.start());
-                                String[] splittedStringBefore = stringBefore.split(" ");
-                                for (String word : splittedStringBefore) {
-                                    if (!word.isEmpty()) {
-                                        tokenList.add(new Tuple2(word, ""));
-                                    }
-                                }
-
-                                //Then, add the NER-tagged tokens to the token list
-                                //Add them as 2 tuples <string, NER tag>
-                                tokenList.add(new Tuple2(NERMatcher.group(2), NERMatcher.group(1)));
-
-                                //Remember last processed character
-                                lastIndex = NERMatcher.end();
-                            }
-                            //Lastly, add the normal words (i.e. w/o NER tags) after the last NER tag
-                            //Add them as 2-tuples <string, "">
-                            String endString = sentence.substring(lastIndex, sentence.length());
-                            String[] splittedEndString = endString.split(" ");
-                            for (String word : splittedEndString) {
-                                if (!word.isEmpty()) {
-                                    tokenList.add(new Tuple2(word, ""));
-                                }
-                            }
-
+                            
+                            List<Tuple2> tokenList = findTuples(sentence);
+                            
                             /*
                             Now, the token list look like this:
                             <"Goldman Sachs", "ORGANIZATION">
@@ -286,7 +306,6 @@ public class App
                     .collect();
 
             //Cluster patterns
-            Float similarityThreshold = 0.5f;
             List<List> clusters = new ArrayList<>();
             for (Tuple5 pattern : patternList) {
                 if (clusters.isEmpty()) {
@@ -332,24 +351,98 @@ public class App
 
             //rawPatterns.saveAsTextFile(outputFile+"/patterns");
             
-            int i = 1;
+            // List of <Pattern, List of Tuples>
+            
             for (List<Tuple5<Map, String, Map, String, Map>> l : clusters) {
-            	if (l.size() > 1) {
-	            	System.out.println("Cluster #" + i++);
-	            	for (Tuple5 t : l) {
-	            		System.out.println(t.toString());
-	            	}
-	            	System.out.println("Centroid: ");
-	            	System.out.println(calculateCentroid(l));
+            	if (l.size() > 5) {
+	            	Tuple5 centroid = calculateCentroid(l);
+	            	patterns.add(new Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>>(centroid, new ArrayList<Tuple2>()));
             	}
             }
+            
+            final List<Tuple3<Tuple2, Tuple5, Float>> candidateTuplesWithPatternAndSimilarity = new ArrayList<Tuple3<Tuple2, Tuple5, Float>>();
+            
+            JavaRDD<Tuple3<Tuple2, Tuple5, Float>> candidateTuples = lineItems
+            		.flatMap(new FlatMapFunction<String, Tuple3<Tuple2, Tuple5, Float>>() {
+
+						@Override
+						public Iterable<Tuple3<Tuple2, Tuple5, Float>> call(String sentence) throws Exception {
+							List<Tuple2> tokenList = findTuples(sentence);
+							
+							List<Tuple2<Tuple2, Tuple5>> tupleContextMap = new ArrayList<Tuple2<Tuple2, Tuple5>>();
+							
+							List<Integer> entity0sites = new ArrayList<Integer>();
+                            List<Integer> entity1sites = new ArrayList<Integer>();
+                            Integer tokenIndex = 0;
+                            for (Tuple2<String, String> wordEntity : tokenList) {
+                                String word = wordEntity._1();
+                                String entity = wordEntity._2();
+
+                                if (entity.equals(task_entityTags.get(0))) {
+                                    entity0sites.add(tokenIndex);
+                                } else if (entity.equals(task_entityTags.get(1))) {
+                                    entity1sites.add(tokenIndex);
+                                }
+                                tokenIndex++;
+                            }
+
+                            //For each pair of A and B in the sentence, generate a pattern and add it to the list
+                            for (Integer entity0site : entity0sites) {
+                                for (Integer entity1site : entity1sites) {
+                                    Integer windowSize = 5;
+                                    Integer maxDistance = 5;
+                                    if (entity0site < entity1site && (entity1site - entity0site) <= maxDistance) {
+                                        Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
+                                        Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
+                                        Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
+                                        tupleContextMap.add(new Tuple2<Tuple2, Tuple5>(new Tuple2(tokenList.get(entity0site), tokenList.get(entity1site)), new Tuple5(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
+                                    } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
+                                        Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
+                                        Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
+                                        Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
+                                        tupleContextMap.add(new Tuple2<Tuple2, Tuple5>(new Tuple2(tokenList.get(entity0site), tokenList.get(entity1site)), new Tuple5(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
+                                    }
+                                }
+                            }
+                            
+                            for (Tuple2<Tuple2, Tuple5> tupleAndContext : tupleContextMap) {
+                            	Tuple2<String, String> candidateTuple = tupleAndContext._1;
+                            	Tuple5<Map, String, Map, String, Map> tupleContext = tupleAndContext._2;
+                            	Tuple5<Map, String, Map, String, Map> bestPattern = null;
+                            	float bestSimilarity = 0.0f;
+                            	for (Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> pattern : patterns) {
+                            		float similartiy = calculateDegreeOfMatch(tupleContext, pattern._1);
+                            		if (similartiy >= similarityThreshold) {
+                            			updatePatternSelectivity(pattern, candidateTuple);
+                            			if (similartiy > bestSimilarity) {
+                            				bestSimilarity = similartiy;
+                            				bestPattern = pattern._1;
+                            			}
+                            		}
+                            	}
+                            	if (bestSimilarity >= similarityThreshold) {
+                            		candidateTuplesWithPatternAndSimilarity.add(new Tuple3<Tuple2, Tuple5, Float>(candidateTuple, bestPattern, bestSimilarity));
+                            	}
+                            }
+							
+							return candidateTuplesWithPatternAndSimilarity;
+						}
+					});
+            
+            candidateTuples.saveAsTextFile(outputFile+"candidates");
+            
+            for (Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> p : patterns) {
+            	if (p._2.size() < supportThreshold) {
+            		patterns.remove(p);
+            	}
+            }                       
             
             System.out.println("Fertisch!");
 
         }
     }
 
-    static class LineItem implements Serializable {
+	static class LineItem implements Serializable {
         Integer INDEX;
         String TEXT;
 

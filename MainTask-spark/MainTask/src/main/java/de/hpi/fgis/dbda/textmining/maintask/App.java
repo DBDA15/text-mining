@@ -2,6 +2,9 @@ package de.hpi.fgis.dbda.textmining.maintask;
 
 import java.io.Serializable;
 import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -12,8 +15,6 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
 
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
-import org.apache.spark.api.java.function.Function;
-import org.apache.spark.api.java.function.Function2;
 import scala.Tuple5;
 import scala.Tuple2;
 import edu.stanford.nlp.util.CoreMap;
@@ -146,9 +147,8 @@ public class App
 
     public static void main( String[] args )
     {
-    	
-        final String lineItemFile = args[0];
-        final String outputFile = args[1];
+
+        final String outputFile = args[0];
 
         //Initialize entity tags for the relation extraction
         final List<String> task_entityTags = new ArrayList<>();
@@ -167,10 +167,22 @@ public class App
         config.set("spark.hadoop.validateOutputSpecs", "false");
 
         try(JavaSparkContext context = new JavaSparkContext(config)) {
-            JavaRDD<String> lineItems = context
-                    .textFile(lineItemFile);
+        	
+        	JavaRDD<String> lineItems = null;
+        	
+        	for (int i = 1; i < args.length; i++) {
+        		if (lineItems == null) {
+        			lineItems = context.textFile(args[i]);
+        		}
+        		else {
+        			JavaRDD<String> localLineItems = context
+                            .textFile(args[i]);
+        			lineItems = lineItems.union(localLineItems);
+        		}
+        	}
 
-			JavaRDD<Tuple5> rawPatterns = lineItems
+            assert lineItems != null;
+            JavaRDD<Tuple5> rawPatterns = lineItems
                     .flatMap(new FlatMapFunction<String, Tuple5>() {
                         @Override
                         public Iterable<Tuple5> call(String sentence) throws Exception {

@@ -2,6 +2,7 @@ package de.hpi.fgis.dbda.textmining.maintask;
 
 import java.io.Serializable;
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -25,9 +26,16 @@ public class App
 	
 	private static int supportThreshold = 5;
 
+
+    //Initialize entity tags for the relation extraction
+    private static final List<String> task_entityTags = new ArrayList<>();
+
+    //Initialize list of seed tuples
+    private static  final List<Tuple2> task_seedTuples = new ArrayList<>();
+
     private static transient AbstractSequenceClassifier<? extends CoreMap> classifier = null;
     
-    private static final List<Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>>> patterns = new ArrayList<Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>>>();
+    private static final Map<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> patternsSelectivity = new LinkedHashMap<Tuple5<Map, String, Map, String, Map>, List<Tuple2>>();
 
     private static String joinTuples(List<Tuple2> tupleList, String separator) {
         /*
@@ -198,23 +206,48 @@ public class App
 	}   
 
 	private static void updatePatternSelectivity(
-			Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> pattern,
-			Tuple2<String, String> candidateTuple) {
-		patterns.get(patterns.indexOf(pattern))._2.add(candidateTuple);		
+			Tuple5<Map, String, Map, String, Map> pattern,
+			Tuple2 candidateTuple) {
+		if (patternsSelectivity.get(pattern) == null) {
+			List<Tuple2> list = new ArrayList<Tuple2>();
+			list.add(candidateTuple);
+			patternsSelectivity.put(pattern, list);
+		}
+		else {
+			List<Tuple2> list = patternsSelectivity.get(pattern);
+			list.add(candidateTuple);
+			patternsSelectivity.put(pattern, list);
+		} 		
+	}
+
+	private static Float calculatePatternConfidence(
+			List<Tuple2> p) {
+		float positives = 0.0f;
+		float negatives = 0.0f;
+		for (Tuple2 tuple : p) {
+			for (Tuple2 t : task_seedTuples) {
+				if (t._1.equals(tuple._1)) {
+					if (t._2.equals(tuple._2)) {
+						positives += 1.0f;
+					}
+					else {
+						negatives += 1.0f;
+					}
+					break;
+				}
+			}
+		}
+		return positives/(positives+negatives);
 	}
 
     public static void main( String[] args )
     {
 
         final String outputFile = args[0];
-
-        //Initialize entity tags for the relation extraction
-        final List<String> task_entityTags = new ArrayList<>();
+        
         task_entityTags.add("ORGANIZATION");
         task_entityTags.add("LOCATION");
-
-        //Initialize list of seed tuples
-        final List<Tuple2> task_seedTuples = new ArrayList<>();
+        
         task_seedTuples.add(new Tuple2("Microsoft", "Redmond"));
         task_seedTuples.add(new Tuple2("Google", "Palo Alto"));
         task_seedTuples.add(new Tuple2("Apple", "Cupertino"));
@@ -353,10 +386,12 @@ public class App
             
             // List of <Pattern, List of Tuples>
             
+            final List<Tuple5<Map, String, Map, String, Map>> patterns = new ArrayList<Tuple5<Map, String, Map, String, Map>>();
+            
             for (List<Tuple5<Map, String, Map, String, Map>> l : clusters) {
             	if (l.size() > 5) {
 	            	Tuple5 centroid = calculateCentroid(l);
-	            	patterns.add(new Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>>(centroid, new ArrayList<Tuple2>()));
+	            	patterns.add(centroid);
             	}
             }
             
@@ -410,13 +445,13 @@ public class App
                             	Tuple5<Map, String, Map, String, Map> tupleContext = tupleAndContext._2;
                             	Tuple5<Map, String, Map, String, Map> bestPattern = null;
                             	float bestSimilarity = 0.0f;
-                            	for (Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> pattern : patterns) {
-                            		float similartiy = calculateDegreeOfMatch(tupleContext, pattern._1);
+                            	for (Tuple5<Map, String, Map, String, Map> pattern : patterns) {
+                            		float similartiy = calculateDegreeOfMatch(tupleContext, pattern);
                             		if (similartiy >= similarityThreshold) {
                             			updatePatternSelectivity(pattern, candidateTuple);
                             			if (similartiy > bestSimilarity) {
                             				bestSimilarity = similartiy;
-                            				bestPattern = pattern._1;
+                            				bestPattern = pattern;
                             			}
                             		}
                             	}
@@ -431,11 +466,18 @@ public class App
             
             candidateTuples.saveAsTextFile(outputFile+"candidates");
             
-            for (Tuple2<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> p : patterns) {
-            	if (p._2.size() < supportThreshold) {
-            		patterns.remove(p);
+            Map<Tuple5<Map, String, Map, String, Map>, Float> patternConfidences = new LinkedHashMap<Tuple5<Map, String, Map, String, Map>, Float>();
+            
+			for (Entry<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> p : patternsSelectivity.entrySet()) {
+            	if (p.getValue().size() < supportThreshold) {
+            		patternsSelectivity.remove(p.getKey());
             	}
-            }                       
+            	else {
+            		patternConfidences.put(p.getKey(), calculatePatternConfidence(p.getValue()));
+            	}
+            }
+            
+            
             
             System.out.println("Fertisch!");
 

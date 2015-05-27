@@ -105,7 +105,11 @@ public class App
     private static Map sumMaps(Map<String, Float> map1, Map<String, Float> map2) {
         //Add all values of map2 to map1
         for (Map.Entry<String, Float> entry : map2.entrySet()) {
-            map1.put(entry.getKey(), map1.get(entry.getKey()) + entry.getValue());
+        	if (map1.containsKey(entry.getKey())) {
+        		map1.put(entry.getKey(), map1.get(entry.getKey()) + entry.getValue());
+        	} else {
+        		map1.put(entry.getKey(), entry.getValue());
+        	}
         }
         return map1;
     }

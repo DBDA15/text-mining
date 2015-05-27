@@ -1,26 +1,23 @@
 package de.hpi.fgis.dbda.textmining.maintask;
 
-import java.io.BufferedInputStream;
-import java.io.IOException;
-import java.io.Reader;
+import java.io.File;
 import java.io.Serializable;
-import java.io.StringReader;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.collections.map.HashedMap;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.spark.SparkConf;
-import org.apache.spark.SparkFiles;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
-import org.apache.spark.api.java.function.Function;
 
-import edu.stanford.nlp.ie.AbstractSequenceClassifier;
-import scala.Tuple5;
 import scala.Tuple2;
+import scala.Tuple5;
+import edu.stanford.nlp.ie.AbstractSequenceClassifier;
 import edu.stanford.nlp.util.CoreMap;
 
 public class App
@@ -68,7 +65,7 @@ public class App
     public static void main( String[] args )
     {
     	
-        final String lineItemFile = args[0];
+        final String itemsDirPath = args[0];
         final String outputFile = args[1];
 
         //Initialize entity tags for the relation extraction
@@ -88,9 +85,22 @@ public class App
         config.set("spark.hadoop.validateOutputSpecs", "false");
 
         try(JavaSparkContext context = new JavaSparkContext(config)) {
-            JavaRDD<String> lineItems = context
-                    .textFile(lineItemFile);
-
+            
+        	File itemDir = new File(itemsDirPath);
+        	
+        	JavaRDD<String> lineItems = null;
+        	
+        	for (File f : itemDir.listFiles()) {
+        		if (lineItems == null) {
+        			lineItems = context.textFile(f.getAbsolutePath());
+        		}
+        		else {
+        			JavaRDD<String> localLineItems = context
+                            .textFile(f.getAbsolutePath());
+        			lineItems.union(localLineItems);
+        		}
+        	}        	
+            
 			JavaRDD<Tuple5> rawPatterns = lineItems
                     .flatMap(new FlatMapFunction<String, Tuple5>() {
                         @Override

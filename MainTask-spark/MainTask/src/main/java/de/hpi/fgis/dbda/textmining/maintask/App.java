@@ -330,12 +330,14 @@ public class App
             
             int i = 1;
             for (List<Tuple5<Map, String, Map, String, Map>> l : clusters) {
-            	System.out.println("Cluster #" + i++);
-            	for (Tuple5 t : l) {
-            		System.out.println(t.toString());
+            	if (l.size() > 1) {
+	            	System.out.println("Cluster #" + i++);
+	            	for (Tuple5 t : l) {
+	            		System.out.println(t.toString());
+	            	}
+	            	System.out.println("Centroid: ");
+	            	System.out.println(calculateCentroid(l));
             	}
-            	System.out.println("Centroid: ");
-            	System.out.println(calculateCentroid(l));
             }
             
             System.out.println("Fertisch!");

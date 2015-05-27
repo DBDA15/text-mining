@@ -64,9 +64,8 @@ public class App
 
     public static void main( String[] args )
     {
-    	
-        final String itemsDirPath = args[0];
-        final String outputFile = args[1];
+
+        final String outputFile = args[0];
 
         //Initialize entity tags for the relation extraction
         final List<String> task_entityTags = new ArrayList<>();
@@ -85,21 +84,19 @@ public class App
         config.set("spark.hadoop.validateOutputSpecs", "false");
 
         try(JavaSparkContext context = new JavaSparkContext(config)) {
-            
-        	File itemDir = new File(itemsDirPath);
         	
         	JavaRDD<String> lineItems = null;
         	
-        	for (File f : itemDir.listFiles()) {
+        	for (int i = 1; i < args.length; i++) {
         		if (lineItems == null) {
-        			lineItems = context.textFile(f.getAbsolutePath());
+        			lineItems = context.textFile(args[i]);
         		}
         		else {
         			JavaRDD<String> localLineItems = context
-                            .textFile(f.getAbsolutePath());
+                            .textFile(args[i]);
         			lineItems.union(localLineItems);
         		}
-        	}        	
+        	}
             
 			JavaRDD<Tuple5> rawPatterns = lineItems
                     .flatMap(new FlatMapFunction<String, Tuple5>() {

@@ -1,24 +1,19 @@
 package de.hpi.fgis.dbda.textmining.maintask;
 
-import java.io.BufferedInputStream;
-import java.io.IOException;
-import java.io.Reader;
 import java.io.Serializable;
-import java.io.StringReader;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.commons.collections.map.HashedMap;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.spark.SparkConf;
-import org.apache.spark.SparkFiles;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
-import org.apache.spark.api.java.function.Function;
 
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
+import org.apache.spark.api.java.function.Function;
+import org.apache.spark.api.java.function.Function2;
 import scala.Tuple5;
 import scala.Tuple2;
 import edu.stanford.nlp.util.CoreMap;
@@ -44,7 +39,7 @@ public class App
            Produce the context based on a given token list. A context is a HashMap that maps each token in the token
            list to a weight. The more prominent or frequent a token is, the higher is the associated weight.
          */
-        Map<String, Integer> termCounts = new HashedMap();
+        Map<String, Integer> termCounts = new HashMap();
 
         //Count how often each token occurs
         Integer sumCounts = 0;
@@ -58,11 +53,95 @@ public class App
         }
 
         //Calculate token frequencies out of the counts
-        Map<String, Float> context = new HashedMap();
+        Map<String, Float> context = new HashMap();
         for (Map.Entry<String, Integer> entry : termCounts.entrySet()) {
             context.put(entry.getKey(), (float) entry.getValue() / sumCounts);
         }
         return context;
+    }
+
+    private static float sumCollection(Collection<Float> col) {
+        float sum = 0.0f;
+        for (float o : col) {
+            sum += o;
+        }
+        return sum;
+    }
+
+    private static Tuple5 calculateCentroid(List<Tuple5<Map, String, Map, String, Map>> patterns) {
+        Map<String, Float> leftCounter = new HashMap();
+        Map<String, Float>  middleCounter = new HashMap();
+        Map<String, Float>  rightCounter = new HashMap();
+
+        String leftEntity = patterns.get(0)._2();
+        String rightEntity = patterns.get(0)._4();
+
+        //Add up all contexts
+        for (Tuple5<Map, String, Map, String, Map> pattern : patterns) {
+            leftCounter = sumMaps(leftCounter, pattern._1());
+            middleCounter = sumMaps(middleCounter, pattern._3());
+            rightCounter = sumMaps(rightCounter, pattern._5());
+        }
+
+        //Normalize counters
+        float leftSum = sumCollection(leftCounter.values());
+        float middleSum = sumCollection(middleCounter.values());
+        float rightSum = sumCollection(rightCounter.values());
+
+        for (String key : leftCounter.keySet()) {
+            leftCounter.put(key, leftCounter.get(key) / leftSum);
+        }
+        for (String key : middleCounter.keySet()) {
+            middleCounter.put(key, middleCounter.get(key) / middleSum);
+        }
+        for (String key : rightCounter.keySet()) {
+            rightCounter.put(key, rightCounter.get(key) / rightSum);
+        }
+
+        return new Tuple5(leftCounter, leftEntity, middleCounter, rightEntity, rightCounter);
+    }
+
+    private static Map sumMaps(Map<String, Float> map1, Map<String, Float> map2) {
+        //Add all values of map2 to map1
+        for (Map.Entry<String, Float> entry : map2.entrySet()) {
+            map1.put(entry.getKey(), map1.get(entry.getKey()) + entry.getValue());
+        }
+        return map1;
+    }
+
+    private static Float calculateDegreeOfMatch(Tuple5<Map, String, Map, String, Map> pattern, List<Tuple5<Map, String, Map, String, Map>> cluster) {
+        Tuple5<Map, String, Map, String, Map> centroid = calculateCentroid(cluster);
+        Map<String, Float> centroidLeft = centroid._1();
+        Map<String, Float> centroidMiddle = centroid._3();
+        Map<String, Float> centroidRight = centroid._5();
+
+        Map<String, Float> patternLeft = pattern._1();
+        Map<String, Float> patternMiddle = pattern._3();
+        Map<String, Float> patternRight = pattern._5();
+
+        if (pattern._2().equals(centroid._2()) && pattern._4().equals(centroid._4())) {
+            float leftSimilarity = 0;
+            float middleSimilarity = 0;
+            float rightSimilarity = 0;
+            for (String key : patternLeft.keySet()) {
+                if (centroidLeft.keySet().contains(key)) {
+                    leftSimilarity += patternLeft.get(key) * centroidLeft.get(key);
+                }
+            }
+            for (String key : patternMiddle.keySet()) {
+                if (centroidMiddle.keySet().contains(key)) {
+                    middleSimilarity += patternMiddle.get(key) * centroidMiddle.get(key);
+                }
+            }
+            for (String key : patternRight.keySet()) {
+                if (centroidRight.keySet().contains(key)) {
+                    rightSimilarity += patternRight.get(key) * centroidRight.get(key);
+                }
+            }
+            return leftSimilarity + middleSimilarity + rightSimilarity;
+        } else {
+            return 0.0f;
+        }
     }
 
     public static void main( String[] args )
@@ -186,7 +265,42 @@ public class App
                         }
                     });
 
-            rawPatterns.saveAsTextFile(outputFile+"/patterns");
+            List<Tuple5> patternList = rawPatterns
+                    .collect();
+
+            //Cluster patterns
+            Float similarityThreshold = 0.5f;
+            List<List> clusters = new ArrayList<>();
+            for (Tuple5 pattern : patternList) {
+                if (clusters.isEmpty()) {
+                    List<Tuple5> newCluster = new ArrayList<>();
+                    newCluster.add(pattern);
+                    clusters.add(newCluster);
+                } else {
+                    Integer clusterIndex = 0;
+                    Integer nearestCluster = null;
+                    Float greatestSimilarity = 0.0f;
+                    for (List<Tuple5<Map, String, Map, String, Map>> cluster : clusters) {
+                        Float similarity = calculateDegreeOfMatch(pattern, cluster);
+                        if (similarity > greatestSimilarity) {
+                            nearestCluster = clusterIndex;
+                            greatestSimilarity = similarity;
+                        }
+                        clusterIndex++;
+                    }
+
+                    if (greatestSimilarity > similarityThreshold) {
+                        clusters.get(nearestCluster).add(pattern);
+                    } else {
+                        List<Tuple5> separateCluster = new ArrayList<>();
+                        separateCluster.add(pattern);
+                        clusters.add(separateCluster);
+                    }
+                }
+            }
+
+            //rawPatterns.saveAsTextFile(outputFile+"/patterns");
+            System.out.println(clusters);
             System.out.println("Fertisch!");
 
         }

@@ -2,9 +2,6 @@ package de.hpi.fgis.dbda.textmining.maintask;
 
 import java.io.Serializable;
 import java.util.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -332,11 +329,13 @@ public class App
             //rawPatterns.saveAsTextFile(outputFile+"/patterns");
             
             int i = 1;
-            for (List<Tuple5> l : clusters) {
+            for (List<Tuple5<Map, String, Map, String, Map>> l : clusters) {
             	System.out.println("Cluster #" + i++);
             	for (Tuple5 t : l) {
             		System.out.println(t.toString());
             	}
+            	System.out.println("Centroid: ");
+            	System.out.println(calculateCentroid(l));
             }
             
             System.out.println("Fertisch!");

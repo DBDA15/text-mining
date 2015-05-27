@@ -37,7 +37,7 @@ public class App
            Produce the context based on a given token list. A context is a HashMap that maps each token in the token
            list to a weight. The more prominent or frequent a token is, the higher is the associated weight.
          */
-        Map<String, Integer> termCounts = new HashMap();
+        Map<String, Integer> termCounts = new LinkedHashMap();
 
         //Count how often each token occurs
         Integer sumCounts = 0;
@@ -51,7 +51,7 @@ public class App
         }
 
         //Calculate token frequencies out of the counts
-        Map<String, Float> context = new HashMap();
+        Map<String, Float> context = new LinkedHashMap();
         for (Map.Entry<String, Integer> entry : termCounts.entrySet()) {
             context.put(entry.getKey(), (float) entry.getValue() / sumCounts);
         }
@@ -67,9 +67,9 @@ public class App
     }
 
     private static Tuple5 calculateCentroid(List<Tuple5<Map, String, Map, String, Map>> patterns) {
-        Map<String, Float> leftCounter = new HashMap();
-        Map<String, Float>  middleCounter = new HashMap();
-        Map<String, Float>  rightCounter = new HashMap();
+        Map<String, Float> leftCounter = new LinkedHashMap();
+        Map<String, Float>  middleCounter = new LinkedHashMap();
+        Map<String, Float>  rightCounter = new LinkedHashMap();
 
         String leftEntity = patterns.get(0)._2();
         String rightEntity = patterns.get(0)._4();

@@ -94,7 +94,7 @@ public class App
         		else {
         			JavaRDD<String> localLineItems = context
                             .textFile(args[i]);
-        			lineItems.union(localLineItems);
+        			lineItems = lineItems.union(localLineItems);
         		}
         	}
             

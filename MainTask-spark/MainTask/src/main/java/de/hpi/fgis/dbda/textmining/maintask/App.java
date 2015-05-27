@@ -463,7 +463,7 @@ public class App
 						}
 					});
             
-            candidateTuples.saveAsTextFile(outputFile+"candidates");
+            candidateTuples.saveAsTextFile(outputFile+"/candidates");
             
             Map<Tuple5<Map, String, Map, String, Map>, Float> patternConfidences = new LinkedHashMap<Tuple5<Map, String, Map, String, Map>, Float>();
             

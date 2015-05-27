@@ -110,18 +110,17 @@ public class App
         }
         return map1;
     }
-
-    private static Float calculateDegreeOfMatch(Tuple5<Map, String, Map, String, Map> pattern, List<Tuple5<Map, String, Map, String, Map>> cluster) {
-        Tuple5<Map, String, Map, String, Map> centroid = calculateCentroid(cluster);
-        Map<String, Float> centroidLeft = centroid._1();
-        Map<String, Float> centroidMiddle = centroid._3();
-        Map<String, Float> centroidRight = centroid._5();
+    
+    private static Float calculateDegreeOfMatch(Tuple5<Map, String, Map, String, Map> pattern, Tuple5<Map, String, Map, String, Map> tuple) {
+    	Map<String, Float> centroidLeft = tuple._1();
+        Map<String, Float> centroidMiddle = tuple._3();
+        Map<String, Float> centroidRight = tuple._5();
 
         Map<String, Float> patternLeft = pattern._1();
         Map<String, Float> patternMiddle = pattern._3();
         Map<String, Float> patternRight = pattern._5();
 
-        if (pattern._2().equals(centroid._2()) && pattern._4().equals(centroid._4())) {
+        if (pattern._2().equals(tuple._2()) && pattern._4().equals(tuple._4())) {
             float leftSimilarity = 0;
             float middleSimilarity = 0;
             float rightSimilarity = 0;
@@ -144,6 +143,11 @@ public class App
         } else {
             return 0.0f;
         }
+    }
+
+    private static Float calculateDegreeOfMatchWithCluster(Tuple5<Map, String, Map, String, Map> pattern, List<Tuple5<Map, String, Map, String, Map>> cluster) {
+        Tuple5<Map, String, Map, String, Map> centroid = calculateCentroid(cluster);
+        return calculateDegreeOfMatch(pattern, centroid);
     }
 
     public static void main( String[] args )
@@ -294,7 +298,7 @@ public class App
                     Integer nearestCluster = null;
                     Float greatestSimilarity = 0.0f;
                     for (List<Tuple5<Map, String, Map, String, Map>> cluster : clusters) {
-                        Float similarity = calculateDegreeOfMatch(pattern, cluster);
+                        Float similarity = calculateDegreeOfMatchWithCluster(pattern, cluster);
                         if (similarity > greatestSimilarity) {
                             nearestCluster = clusterIndex;
                             greatestSimilarity = similarity;

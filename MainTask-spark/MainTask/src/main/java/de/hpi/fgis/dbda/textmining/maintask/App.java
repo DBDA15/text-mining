@@ -26,13 +26,6 @@ public class App
 	
 	private static int supportThreshold = 5;
 
-
-    //Initialize entity tags for the relation extraction
-    private static final List<String> task_entityTags = new ArrayList<>();
-
-    //Initialize list of seed tuples
-    private static  final List<Tuple2> task_seedTuples = new ArrayList<>();
-
     private static transient AbstractSequenceClassifier<? extends CoreMap> classifier = null;
     
     private static final Map<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> patternsSelectivity = new LinkedHashMap<Tuple5<Map, String, Map, String, Map>, List<Tuple2>>();
@@ -221,7 +214,7 @@ public class App
 	}
 
 	private static Float calculatePatternConfidence(
-			List<Tuple2> p) {
+			List<Tuple2> p, List<Tuple2> task_seedTuples) {
 		float positives = 0.0f;
 		float negatives = 0.0f;
 		for (Tuple2 tuple : p) {
@@ -244,6 +237,12 @@ public class App
     {
 
         final String outputFile = args[0];
+        
+        //Initialize entity tags for the relation extraction
+        final List<String> task_entityTags = new ArrayList<>();
+
+        //Initialize list of seed tuples
+        final List<Tuple2> task_seedTuples = new ArrayList<>();
         
         task_entityTags.add("ORGANIZATION");
         task_entityTags.add("LOCATION");
@@ -473,7 +472,7 @@ public class App
             		patternsSelectivity.remove(p.getKey());
             	}
             	else {
-            		patternConfidences.put(p.getKey(), calculatePatternConfidence(p.getValue()));
+            		patternConfidences.put(p.getKey(), calculatePatternConfidence(p.getValue(), task_seedTuples));
             	}
             }
             

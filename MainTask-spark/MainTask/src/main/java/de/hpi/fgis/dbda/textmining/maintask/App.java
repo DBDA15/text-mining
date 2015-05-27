@@ -327,7 +327,9 @@ public class App
 
             //rawPatterns.saveAsTextFile(outputFile+"/patterns");
             
+            int i = 1;
             for (List<Tuple5> l : clusters) {
+            	System.out.println("Cluster #" + i++);
             	for (Tuple5 t : l) {
             		System.out.println(t.toString());
             	}

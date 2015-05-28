@@ -297,89 +297,83 @@ public class App
             
             organizationKeyList.persist(StorageLevel.MEMORY_ONLY());
             
-            JavaPairRDD<String, Void> seedTuples = context.textFile(args[1])
-            		.mapToPair(new PairFunction<String, String, Void>() {
+            JavaPairRDD<String, String> seedTuples = context.textFile(args[1])
+            		.mapToPair(new PairFunction<String, String, String>() {
 
 						@Override
-						public Tuple2<String, Void> call(String t)
+						public Tuple2<String, String> call(String t)
 								throws Exception {
 							SeedTuple st = new SeedTuple(t);
-							return new Tuple2<String, Void>(st.ORGANIZATION, null);
+							return new Tuple2<String, String>(st.ORGANIZATION, st.LOCATION);
 						}
 					});
             
-            JavaPairRDD<String, String> organizationKeyListJoined = organizationKeyList.join(seedTuples)
-            		.mapToPair(new PairFunction<Tuple2<String,Tuple2<String,Void>>, String, String>() {
+            JavaPairRDD<String, Tuple2<String, String>> organizationKeyListJoined = organizationKeyList.join(seedTuples);
+            
+            JavaRDD<Tuple5> rawPatterns = organizationKeyListJoined
+            		.flatMap(new FlatMapFunction<Tuple2<String,Tuple2<String,String>>, Tuple5>() {
 
 						@Override
-						public Tuple2<String, String> call(
-								Tuple2<String, Tuple2<String, Void>> t)
+						public Iterable<Tuple5> call(
+								Tuple2<String, Tuple2<String, String>> t)
 								throws Exception {
-							return new Tuple2<String, String>(t._1(), t._2()._1());
+								
+								String seedTupleOrg = t._1();
+								String sentence = t._2()._1();
+								String seedTupleLocation = t._2()._2();
+							
+							 	List<Tuple2> tokenList = generateTokenList(sentence);
+	                            
+	                            /*
+	                            Now, the token list look like this:
+	                            <"Goldman Sachs", "ORGANIZATION">
+	                            <"is", "">
+	                            <"headquarted", "">
+	                            <"in", "">
+	                            <"New York City", "LOCATION"
+	                            */
+							 	
+	                            List patterns = new ArrayList();
+	                            
+	                            //Take note of where A and B appeared in the sentence (and with the right NER tags)
+	                            List<Integer> entity0sites = new ArrayList<Integer>();
+	                            List<Integer> entity1sites = new ArrayList<Integer>();
+	                            Integer tokenIndex = 0;
+	                            for (Tuple2<String, String> wordEntity : tokenList) {
+	                                String word = wordEntity._1();
+	                                String entity = wordEntity._2();
+
+	                                if (word.equals(seedTupleOrg) && entity.equals(task_entityTags.get(0))) {
+	                                    entity0sites.add(tokenIndex);
+	                                } else if (word.equals(seedTupleLocation) && entity.equals(task_entityTags.get(1))) {
+	                                    entity1sites.add(tokenIndex);
+	                                }
+	                                tokenIndex++;
+	                            }
+
+	                            //For each pair of A and B in the sentence, generate a pattern and add it to the list
+	                            for (Integer entity0site : entity0sites) {
+	                                for (Integer entity1site : entity1sites) {
+	                                    Integer windowSize = 5;
+	                                    Integer maxDistance = 5;
+	                                    if (entity0site < entity1site && (entity1site - entity0site) <= maxDistance) {
+	                                        Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
+	                                        Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
+	                                        Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
+	                                        Tuple5 pattern = new Tuple5(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext);
+	                                        patterns.add(pattern);
+	                                    } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
+	                                        Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
+	                                        Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
+	                                        Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
+	                                        Tuple5 pattern = new Tuple5(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext);
+	                                        patterns.add(pattern);
+	                                    }
+	                                }
+	                            }
+							return patterns;
 						}
 					});
-            
-            JavaRDD<Tuple5> rawPatterns = lineItems
-                    .flatMap(new FlatMapFunction<String, Tuple5>() {
-                        @Override
-                        public Iterable<Tuple5> call(String sentence) throws Exception {
-                            
-                            List<Tuple2> tokenList = generateTokenList(sentence);
-                            
-                            /*
-                            Now, the token list look like this:
-                            <"Goldman Sachs", "ORGANIZATION">
-                            <"is", "">
-                            <"headquarted", "">
-                            <"in", "">
-                            <"New York City", "LOCATION"
-                            */
-
-                            List patterns = new ArrayList();
-                            //For each of the seed tuples <A, B>:
-                            for (Tuple2 seedTuple : task_seedTuples) {
-
-                                //Take note of where A and B appeared in the sentence (and with the right NER tags)
-                                List<Integer> entity0sites = new ArrayList<Integer>();
-                                List<Integer> entity1sites = new ArrayList<Integer>();
-                                Integer tokenIndex = 0;
-                                for (Tuple2<String, String> wordEntity : tokenList) {
-                                    String word = wordEntity._1();
-                                    String entity = wordEntity._2();
-
-                                    if (word.equals(seedTuple._1()) && entity.equals(task_entityTags.get(0))) {
-                                        entity0sites.add(tokenIndex);
-                                    } else if (word.equals(seedTuple._2()) && entity.equals(task_entityTags.get(1))) {
-                                        entity1sites.add(tokenIndex);
-                                    }
-                                    tokenIndex++;
-                                }
-
-                                //For each pair of A and B in the sentence, generate a pattern and add it to the list
-                                for (Integer entity0site : entity0sites) {
-                                    for (Integer entity1site : entity1sites) {
-                                        Integer windowSize = 5;
-                                        Integer maxDistance = 5;
-                                        if (entity0site < entity1site && (entity1site - entity0site) <= maxDistance) {
-                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
-                                            Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
-                                            Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
-                                            Tuple5 pattern = new Tuple5(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext);
-                                            patterns.add(pattern);
-                                        } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
-                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
-                                            Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
-                                            Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
-                                            Tuple5 pattern = new Tuple5(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext);
-                                            patterns.add(pattern);
-                                        }
-                                    }
-                                }
-                            }
-
-                            return patterns;
-                        }
-                    });
 
             List<Tuple5> patternList = rawPatterns
                     .collect();

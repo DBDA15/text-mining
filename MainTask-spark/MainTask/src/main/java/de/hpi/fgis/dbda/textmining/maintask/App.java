@@ -64,7 +64,7 @@ public class App
         return sum;
     }
 
-    private static Tuple5 calculateCentroid(List<Tuple5<Map, String, Map, String, Map>> patterns) {
+    private static TupleContext calculateCentroid(List<TupleContext> patterns) {
         Map<String, Float> leftCounter = new LinkedHashMap();
         Map<String, Float>  middleCounter = new LinkedHashMap();
         Map<String, Float>  rightCounter = new LinkedHashMap();
@@ -73,7 +73,7 @@ public class App
         String rightEntity = patterns.get(0)._4();
 
         //Add up all contexts
-        for (Tuple5<Map, String, Map, String, Map> pattern : patterns) {
+        for (TupleContext pattern : patterns) {
             leftCounter = sumMaps(leftCounter, pattern._1());
             middleCounter = sumMaps(middleCounter, pattern._3());
             rightCounter = sumMaps(rightCounter, pattern._5());
@@ -94,7 +94,7 @@ public class App
             rightCounter.put(key, rightCounter.get(key) / rightSum);
         }
 
-        return new Tuple5(leftCounter, leftEntity, middleCounter, rightEntity, rightCounter);
+        return new TupleContext(leftCounter, leftEntity, middleCounter, rightEntity, rightCounter);
     }
 
     private static Map sumMaps(Map<String, Float> map1, Map<String, Float> map2) {
@@ -109,7 +109,7 @@ public class App
         return map1;
     }
     
-    private static Float calculateDegreeOfMatch(Tuple5<Map, String, Map, String, Map> pattern, Tuple5<Map, String, Map, String, Map> tuple) {
+    private static Float calculateDegreeOfMatch(TupleContext pattern, TupleContext tuple) {
     	Map<String, Float> centroidLeft = tuple._1();
         Map<String, Float> centroidMiddle = tuple._3();
         Map<String, Float> centroidRight = tuple._5();
@@ -143,8 +143,8 @@ public class App
         }
     }
 
-    private static Float calculateDegreeOfMatchWithCluster(Tuple5<Map, String, Map, String, Map> pattern, List<Tuple5<Map, String, Map, String, Map>> cluster) {
-        Tuple5<Map, String, Map, String, Map> centroid = calculateCentroid(cluster);
+    private static Float calculateDegreeOfMatchWithCluster(TupleContext pattern, List<TupleContext> cluster) {
+    	TupleContext centroid = calculateCentroid(cluster);
         return calculateDegreeOfMatch(pattern, centroid);
     }
 
@@ -286,11 +286,11 @@ public class App
             
             JavaPairRDD<String, Tuple2<String, String>> organizationKeyListJoined = organizationKeyList.join(seedTuples);
             
-            JavaRDD<Tuple5> rawPatterns = organizationKeyListJoined
-            		.flatMap(new FlatMapFunction<Tuple2<String, Tuple2<String, String>>, Tuple5>() {
+            JavaRDD<TupleContext> rawPatterns = organizationKeyListJoined
+            		.flatMap(new FlatMapFunction<Tuple2<String, Tuple2<String, String>>, TupleContext>() {
 
                         @Override
-                        public Iterable<Tuple5> call(
+                        public Iterable<TupleContext> call(
                                 Tuple2<String, Tuple2<String, String>> t)
                                 throws Exception {
 
@@ -336,13 +336,13 @@ public class App
                                         Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
                                         Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
                                         Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
-                                        Tuple5 pattern = new Tuple5(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext);
+                                        TupleContext pattern = new TupleContext(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext);
                                         patterns.add(pattern);
                                     } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
                                         Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
                                         Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
                                         Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
-                                        Tuple5 pattern = new Tuple5(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext);
+                                        TupleContext pattern = new TupleContext(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext);
                                         patterns.add(pattern);
                                     }
                                 }
@@ -351,21 +351,21 @@ public class App
                         }
                     });
 
-            List<Tuple5> patternList = rawPatterns
+            List<TupleContext> patternList = rawPatterns
                     .collect();
 
             //Cluster patterns
             List<List> clusters = new ArrayList<>();
-            for (Tuple5 pattern : patternList) {
+            for (TupleContext pattern : patternList) {
                 if (clusters.isEmpty()) {
-                    List<Tuple5> newCluster = new ArrayList<>();
+                    List<TupleContext> newCluster = new ArrayList<>();
                     newCluster.add(pattern);
                     clusters.add(newCluster);
                 } else {
                     Integer clusterIndex = 0;
                     Integer nearestCluster = null;
                     Float greatestSimilarity = 0.0f;
-                    for (List<Tuple5<Map, String, Map, String, Map>> cluster : clusters) {
+                    for (List<TupleContext> cluster : clusters) {
                         Float similarity = calculateDegreeOfMatchWithCluster(pattern, cluster);
                         if (similarity > greatestSimilarity) {
                             nearestCluster = clusterIndex;
@@ -377,28 +377,28 @@ public class App
                     if (greatestSimilarity > similarityThreshold) {
                         clusters.get(nearestCluster).add(pattern);
                     } else {
-                        List<Tuple5> separateCluster = new ArrayList<>();
+                        List<TupleContext> separateCluster = new ArrayList<>();
                         separateCluster.add(pattern);
                         clusters.add(separateCluster);
                     }
                 }
             }
             
-            final List<Tuple5<Map, String, Map, String, Map>> patterns = new ArrayList();
+            final List<TupleContext> patterns = new ArrayList();
 
             //Remove clusters with less than 5 patterns?!
-            for (List<Tuple5<Map, String, Map, String, Map>> l : clusters) {
+            for (List<TupleContext> l : clusters) {
             	if (l.size() > 5) {
-	            	Tuple5 centroid = calculateCentroid(l);
+            		TupleContext centroid = calculateCentroid(l);
 	            	patterns.add(centroid);
             	}
             }
 
             //Search sentences for NER tags -> make textSegment list
-            JavaRDD<List<Tuple2<Tuple2, Tuple5>>> textSegments = lineItems
-                    .map(new Function<String, List<Tuple2<Tuple2, Tuple5>>>() {
+            JavaRDD<List<Tuple2<Tuple2, TupleContext>>> textSegments = lineItems
+                    .map(new Function<String, List<Tuple2<Tuple2, TupleContext>>>() {
                         @Override
-                        public List<Tuple2<Tuple2, Tuple5>> call(String sentence) throws Exception {
+                        public List<Tuple2<Tuple2, TupleContext>> call(String sentence) throws Exception {
                             List<Tuple2> tokenList = generateTokenList(sentence);
 
                             List<Integer> entity0sites = new ArrayList<Integer>();
@@ -416,7 +416,7 @@ public class App
                             }
 
                             //For each pair of A and B in the sentence, generate a text segment and add it to the list
-                            List<Tuple2<Tuple2, Tuple5>> textSegmentList = new ArrayList<>();
+                            List<Tuple2<Tuple2, TupleContext>> textSegmentList = new ArrayList<>();
                             for (Integer entity0site : entity0sites) {
                                 for (Integer entity1site : entity1sites) {
                                     Integer windowSize = 5;
@@ -425,12 +425,12 @@ public class App
                                         Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
                                         Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
                                         Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
-                                        textSegmentList.add(new Tuple2<Tuple2, Tuple5>(new Tuple2(tokenList.get(entity0site), tokenList.get(entity1site)), new Tuple5(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
+                                        textSegmentList.add(new Tuple2<Tuple2, TupleContext>(new Tuple2(tokenList.get(entity0site), tokenList.get(entity1site)), new TupleContext(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
                                     } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
                                         Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
                                         Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
                                         Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
-                                        textSegmentList.add(new Tuple2<Tuple2, Tuple5>(new Tuple2(tokenList.get(entity0site), tokenList.get(entity1site)), new Tuple5(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
+                                        textSegmentList.add(new Tuple2<Tuple2, TupleContext>(new Tuple2(tokenList.get(entity0site), tokenList.get(entity1site)), new TupleContext(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
                                     }
                                 }
                             }
@@ -442,20 +442,20 @@ public class App
 
             //collect all tuples generated by each pattern <pattern_id, tuple>
             JavaPairRDD<Integer, Tuple2> generatedTuples = textSegments
-                    .flatMapToPair(new PairFlatMapFunction<List<Tuple2<Tuple2, Tuple5>>, Integer, Tuple2>() {
+                    .flatMapToPair(new PairFlatMapFunction<List<Tuple2<Tuple2, TupleContext>>, Integer, Tuple2>() {
                         @Override
-                        public Iterable<Tuple2<Integer, Tuple2>> call(List<Tuple2<Tuple2, Tuple5>> listOfTextSegments) throws Exception {
+                        public Iterable<Tuple2<Integer, Tuple2>> call(List<Tuple2<Tuple2, TupleContext>> listOfTextSegments) throws Exception {
 
                             //Algorithm from figure 4
                             List<Tuple2<Integer, Tuple2>> generatedTuples = new ArrayList();
-                            for (Tuple2<Tuple2, Tuple5> textSegment : listOfTextSegments) {
+                            for (Tuple2<Tuple2, TupleContext> textSegment : listOfTextSegments) {
 
                                 Tuple2<String, String> candidateTuple = textSegment._1();
-                                Tuple5<Map, String, Map, String, Map> tupleContext = textSegment._2();
+                                TupleContext tupleContext = textSegment._2();
 
                                 Integer patternIndex = 0;
                                 while (patternIndex < patterns.size()) {
-                                    Tuple5<Map, String, Map, String, Map> pattern = patterns.get(patternIndex);
+                                    TupleContext pattern = patterns.get(patternIndex);
                                     float similarity = calculateDegreeOfMatch(tupleContext, pattern);
                                     if (similarity >= similarityThreshold) {
                                         generatedTuples.add(new Tuple2(patternIndex, candidateTuple));
@@ -487,23 +487,23 @@ public class App
 
             //Compile candidate list: <pattern, <candidate tuple, similarity>>
             JavaPairRDD<Integer, Tuple2<Tuple2, Float>> patternsWithTuples = textSegments
-                    .flatMapToPair(new PairFlatMapFunction<List<Tuple2<Tuple2, Tuple5>>, Integer, Tuple2<Tuple2, Float>>() {
+                    .flatMapToPair(new PairFlatMapFunction<List<Tuple2<Tuple2, TupleContext>>, Integer, Tuple2<Tuple2, Float>>() {
                         @Override
-                        public Iterable<Tuple2<Integer, Tuple2<Tuple2, Float>>> call(List<Tuple2<Tuple2, Tuple5>> textSegments) throws Exception {
+                        public Iterable<Tuple2<Integer, Tuple2<Tuple2, Float>>> call(List<Tuple2<Tuple2, TupleContext>> textSegments) throws Exception {
 
                             //Algorithm from figure 4
                             //
                             List<Tuple2<Integer, Tuple2<Tuple2, Float>>> candidateTuplesWithPatternAndSimilarity = new ArrayList();
-                            for (Tuple2<Tuple2, Tuple5> textSegment : textSegments) {
+                            for (Tuple2<Tuple2, TupleContext> textSegment : textSegments) {
 
                                 Tuple2<String, String> candidateTuple = textSegment._1();
-                                Tuple5<Map, String, Map, String, Map> tupleContext = textSegment._2();
+                                TupleContext tupleContext = textSegment._2();
 
                                 Integer bestPattern = null;
                                 float bestSimilarity = 0.0f;
                                 Integer patternIndex = 0;
                                 while (patternIndex < patterns.size()) {
-                                    Tuple5<Map, String, Map, String, Map> pattern = patterns.get(patternIndex);
+                                    TupleContext pattern = patterns.get(patternIndex);
                                     float similarity = calculateDegreeOfMatch(tupleContext, pattern);
                                     if (similarity >= similarityThreshold) {
                                         if (similarity > bestSimilarity) {

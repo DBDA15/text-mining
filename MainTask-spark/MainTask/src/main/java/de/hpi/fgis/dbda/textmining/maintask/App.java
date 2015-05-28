@@ -12,7 +12,6 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
 
-import akka.pattern.Patterns;
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
 import scala.Tuple2;
 import scala.Tuple3;
@@ -159,7 +158,7 @@ public class App
         return calculateDegreeOfMatch(pattern, centroid);
     }
 
-    private static List<Tuple2> findTuples(String sentence) {
+    private static List<Tuple2> generateTokenList(String sentence) {
     	//Create regex pattern that finds NER XML tags in the sentence (e.g. "<LOCATION>New York</LOCATION>")
         Pattern NERTagPattern = Pattern.compile("<([A-Z]+)>(.+?)</([A-Z]+)>");
         Matcher NERMatcher = NERTagPattern.matcher(sentence);
@@ -277,7 +276,7 @@ public class App
                         @Override
                         public Iterable<Tuple5> call(String sentence) throws Exception {
                             
-                            List<Tuple2> tokenList = findTuples(sentence);
+                            List<Tuple2> tokenList = generateTokenList(sentence);
                             
                             /*
                             Now, the token list look like this:
@@ -401,9 +400,9 @@ public class App
 
 						@Override
 						public Iterable<Tuple3<Tuple2, Tuple5, Float>> call(String sentence) throws Exception {
-							List<Tuple2> tokenList = findTuples(sentence);
-							
-							List<Tuple2<Tuple2, Tuple5>> tupleContextMap = new ArrayList<Tuple2<Tuple2, Tuple5>>();
+
+							List<Tuple2> tokenList = generateTokenList(sentence);
+							List<Tuple2<Tuple2, Tuple5>> textSegmentList = new ArrayList<Tuple2<Tuple2, Tuple5>>();
 							
 							List<Integer> entity0sites = new ArrayList<Integer>();
                             List<Integer> entity1sites = new ArrayList<Integer>();
@@ -429,27 +428,27 @@ public class App
                                         Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
                                         Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
                                         Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
-                                        tupleContextMap.add(new Tuple2<Tuple2, Tuple5>(new Tuple2(tokenList.get(entity0site), tokenList.get(entity1site)), new Tuple5(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
+                                        textSegmentList.add(new Tuple2<Tuple2, Tuple5>(new Tuple2(tokenList.get(entity0site), tokenList.get(entity1site)), new Tuple5(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
                                     } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
                                         Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
                                         Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
                                         Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
-                                        tupleContextMap.add(new Tuple2<Tuple2, Tuple5>(new Tuple2(tokenList.get(entity0site), tokenList.get(entity1site)), new Tuple5(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
+                                        textSegmentList.add(new Tuple2<Tuple2, Tuple5>(new Tuple2(tokenList.get(entity0site), tokenList.get(entity1site)), new Tuple5(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
                                     }
                                 }
                             }
                             
-                            for (Tuple2<Tuple2, Tuple5> tupleAndContext : tupleContextMap) {
+                            for (Tuple2<Tuple2, Tuple5> tupleAndContext : textSegmentList) {
                             	Tuple2<String, String> candidateTuple = tupleAndContext._1;
                             	Tuple5<Map, String, Map, String, Map> tupleContext = tupleAndContext._2;
                             	Tuple5<Map, String, Map, String, Map> bestPattern = null;
                             	float bestSimilarity = 0.0f;
                             	for (Tuple5<Map, String, Map, String, Map> pattern : patterns) {
-                            		float similartiy = calculateDegreeOfMatch(tupleContext, pattern);
-                            		if (similartiy >= similarityThreshold) {
+                            		float similarity = calculateDegreeOfMatch(tupleContext, pattern);
+                            		if (similarity >= similarityThreshold) {
                             			updatePatternSelectivity(pattern, candidateTuple);
-                            			if (similartiy > bestSimilarity) {
-                            				bestSimilarity = similartiy;
+                            			if (similarity > bestSimilarity) {
+                            				bestSimilarity = similarity;
                             				bestPattern = pattern;
                             			}
                             		}

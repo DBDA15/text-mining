@@ -9,14 +9,12 @@ import java.util.regex.Pattern;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaPairRDD$;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.*;
 
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
 import scala.Tuple2;
-import scala.Tuple3;
 import scala.Tuple5;
 import edu.stanford.nlp.util.CoreMap;
 
@@ -213,7 +211,7 @@ public class App
 	}
 
 	private static Float calculatePatternConfidence(
-			List<Tuple2> tuplesFromPattern, List<Tuple2> task_seedTuples) {
+			Iterable<Tuple2> tuplesFromPattern, List<Tuple2> task_seedTuples) {
 		float positives = 0.0f;
 		float negatives = 0.0f;
 		for (Tuple2 tupleFromPattern : tuplesFromPattern) {
@@ -394,18 +392,17 @@ public class App
             	}
             }
 
-            JavaPairRDD<Tuple2, Tuple2<Integer, Float>> candidateTuples = lineItems
-            		.flatMapToPair(new PairFlatMapFunction<String, Tuple2, Tuple2<Integer, Float>>() {
+            //Search sentences for NER tags -> make textSegment list
+            JavaRDD<List<Tuple2<Tuple2, Tuple5>>> textSegments = lineItems
+                    .map(new Function<String, List<Tuple2<Tuple2, Tuple5>>>() {
                         @Override
-                        public Iterable<Tuple2<Tuple2, Tuple2<Integer, Float>>> call(String sentence) throws Exception {
+                        public List<Tuple2<Tuple2, Tuple5>> call(String sentence) throws Exception {
+                            List<Tuple2> tokenList = generateTokenList(sentence);
 
-							List<Tuple2> tokenList = generateTokenList(sentence);
-							
-							List<Integer> entity0sites = new ArrayList<Integer>();
+                            List<Integer> entity0sites = new ArrayList<Integer>();
                             List<Integer> entity1sites = new ArrayList<Integer>();
                             Integer tokenIndex = 0;
                             for (Tuple2<String, String> wordEntity : tokenList) {
-                                String word = wordEntity._1();
                                 String entity = wordEntity._2();
 
                                 if (entity.equals(task_entityTags.get(0))) {
@@ -435,43 +432,90 @@ public class App
                                     }
                                 }
                             }
+                            return textSegmentList;
+                        }
+                    });
+
+            //Compile candidate list
+            JavaPairRDD<Tuple2, Tuple2<Integer, Float>> candidateTuples = textSegments
+            		.flatMapToPair(new PairFlatMapFunction<List<Tuple2<Tuple2, Tuple5>>, Tuple2, Tuple2<Integer, Float>>() {
+                        @Override
+                        public Iterable<Tuple2<Tuple2, Tuple2<Integer, Float>>> call(List<Tuple2<Tuple2, Tuple5>> textSegments) throws Exception {
 
                             //Algorithm from figure 4
                             //
                             List<Tuple2<Tuple2, Tuple2<Integer, Float>>> candidateTuplesWithPatternAndSimilarity = new ArrayList();
-                            for (Tuple2<Tuple2, Tuple5> textSegment : textSegmentList) {
+                            for (Tuple2<Tuple2, Tuple5> textSegment : textSegments) {
 
-                            	Tuple2<String, String> candidateTuple = textSegment._1();
-                            	Tuple5<Map, String, Map, String, Map> tupleContext = textSegment._2();
+                                Tuple2<String, String> candidateTuple = textSegment._1();
+                                Tuple5<Map, String, Map, String, Map> tupleContext = textSegment._2();
 
-                            	Integer bestPattern = null;
-                            	float bestSimilarity = 0.0f;
-                            	Integer patternIndex = 0;
+                                Integer bestPattern = null;
+                                float bestSimilarity = 0.0f;
+                                Integer patternIndex = 0;
                                 while (patternIndex < patterns.size()) {
                                     Tuple5<Map, String, Map, String, Map> pattern = patterns.get(patternIndex);
-                            		float similarity = calculateDegreeOfMatch(tupleContext, pattern);
-                            		if (similarity >= similarityThreshold) {
-                            			rememberTupleGeneratedFromPattern(patternIndex, candidateTuple);
-                            			if (similarity > bestSimilarity) {
-                            				bestSimilarity = similarity;
-                            				bestPattern = patternIndex;
-                            			}
-                            		}
+                                    float similarity = calculateDegreeOfMatch(tupleContext, pattern);
+                                    if (similarity >= similarityThreshold) {
+                                        if (similarity > bestSimilarity) {
+                                            bestSimilarity = similarity;
+                                            bestPattern = patternIndex;
+                                        }
+                                    }
                                     patternIndex++;
-                            	}
-                            	if (bestSimilarity >= similarityThreshold) {
-                            		candidateTuplesWithPatternAndSimilarity.add(new Tuple2(candidateTuple, new Tuple2(bestPattern, bestSimilarity)));
-                            	}
+                                }
+                                if (bestSimilarity >= similarityThreshold) {
+                                    candidateTuplesWithPatternAndSimilarity.add(new Tuple2(candidateTuple, new Tuple2(bestPattern, bestSimilarity)));
+                                }
                             }
+                            return candidateTuplesWithPatternAndSimilarity;
+                        }
+                    });
 
-							return candidateTuplesWithPatternAndSimilarity;
-						}
-					});
+            //collect all tuples generated by each pattern
+            JavaPairRDD<Integer, Tuple2> generatedTuples = textSegments
+                    .flatMapToPair(new PairFlatMapFunction<List<Tuple2<Tuple2, Tuple5>>, Integer, Tuple2>() {
+                        @Override
+                        public Iterable<Tuple2<Integer, Tuple2>> call(List<Tuple2<Tuple2, Tuple5>> tuple2s) throws Exception {
 
-            final Map<Integer, Float> patternConfidences = new HashMap();
-            for (Entry<Integer, List<Tuple2>> entry : tuplesGeneratedFromPattern.entrySet()) {
-                patternConfidences.put(entry.getKey(), calculatePatternConfidence(entry.getValue(), task_seedTuples));
-            }
+                            //Algorithm from figure 4
+                            //
+                            List<Tuple2<Integer, Tuple2>> generatedTuples = new ArrayList();
+                            for (Tuple2<Tuple2, Tuple5> textSegment : textSegments) {
+
+                                Tuple2<String, String> candidateTuple = textSegment._1();
+                                Tuple5<Map, String, Map, String, Map> tupleContext = textSegment._2();
+
+                                Integer patternIndex = 0;
+                                while (patternIndex < patterns.size()) {
+                                    Tuple5<Map, String, Map, String, Map> pattern = patterns.get(patternIndex);
+                                    float similarity = calculateDegreeOfMatch(tupleContext, pattern);
+                                    if (similarity >= similarityThreshold) {
+                                        generatedTuples.add(new Tuple2(patternIndex, candidateTuple));
+                                    }
+                                    patternIndex++;
+                                }
+                            }
+                            return generatedTuples;
+                        }
+                    });
+
+            //TODO: do it with reducebykey()
+            JavaPairRDD<Integer, Iterable<Tuple2>> tuplesGeneratedFromPattern_grouped = generatedTuples
+                    .groupByKey();
+
+            //calculate pattern confidences to JavaPairRDD: <pattern_id, confidence>
+            JavaPairRDD<Integer, Float> patternConfidences = tuplesGeneratedFromPattern_grouped
+                    .mapToPair(new PairFunction<Tuple2<Integer, Iterable<Tuple2>>, Integer, Float>() {
+                        @Override
+                        public Tuple2<Integer, Float> call(Tuple2<Integer, Iterable<Tuple2>> grouping) throws Exception {
+                            Integer pattern = grouping._1();
+                            Iterable<Tuple2> tuples = grouping._2();
+                            Float confidence = calculatePatternConfidence(tuples, task_seedTuples);
+                            return new Tuple2<>(pattern, confidence);
+                            }
+                        });
+
 
             JavaPairRDD<Tuple2, Float> confidenceSubtrahend = candidateTuples
                     .combineByKey(
@@ -501,7 +545,6 @@ public class App
                         }
                     });
 
-            //TODO: calculate candidate tuple confidences
             //TODO: filter candidate tuples based on confidence
             confidences.saveAsTextFile(outputFile + "/confidences");
 

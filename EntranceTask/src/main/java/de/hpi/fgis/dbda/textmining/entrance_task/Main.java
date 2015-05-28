@@ -40,7 +40,7 @@ public class Main
                             new Function<String, String>() {
                                 public String call(String line) {
                                     if (tagger == null) {
-                                        tagger = new MaxentTagger("pos_tagger/taggers/english-left3words-distsim.tagger");
+                                        tagger = new MaxentTagger("edu/stanford/nlp/models/pos-tagger/english-left3words/english-left3words-distsim.tagger");
                                     }
                                     LineItem li = new LineItem(line);
                                     String tagged = tagger.tagString(li.TEXT);

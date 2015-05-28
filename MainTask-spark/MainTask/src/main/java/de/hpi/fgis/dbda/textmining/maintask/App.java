@@ -213,13 +213,13 @@ public class App
 	}
 
 	private static Float calculatePatternConfidence(
-			List<Tuple2> p, List<Tuple2> task_seedTuples) {
+			List<Tuple2> tuplesFromPattern, List<Tuple2> task_seedTuples) {
 		float positives = 0.0f;
 		float negatives = 0.0f;
-		for (Tuple2 tuple : p) {
-			for (Tuple2 t : task_seedTuples) {
-				if (t._1.equals(tuple._1)) {
-					if (t._2.equals(tuple._2)) {
+		for (Tuple2 tupleFromPattern : tuplesFromPattern) {
+			for (Tuple2 knownTuple : task_seedTuples) {
+				if (knownTuple._1.equals(tupleFromPattern._1)) {
+					if (knownTuple._2.equals(tupleFromPattern._2)) {
 						positives += 1.0f;
 					}
 					else {

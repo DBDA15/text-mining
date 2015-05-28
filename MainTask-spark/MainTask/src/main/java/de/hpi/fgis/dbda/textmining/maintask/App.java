@@ -26,21 +26,6 @@ public class App
 	
 	private static int supportThreshold = 5;
 
-    private static transient AbstractSequenceClassifier<? extends CoreMap> classifier = null;
-    
-    private static final Map<Integer, List<Tuple2>> tuplesGeneratedFromPattern = new HashMap();
-
-    private static String joinTuples(List<Tuple2> tupleList, String separator) {
-        /*
-          Join the first string elements of all 2-tuples in a given tuple list (like StringUtils.join())
-        */
-        List<String> strings = new ArrayList<>();
-        for (Tuple2<String, String> tuple : tupleList) {
-            strings.add(tuple._1());
-        }
-        return StringUtils.join(strings, separator);
-    }
-
     private static Map produceContext(List<Tuple2> tokenList) {
         /*
            Produce the context based on a given token list. A context is a HashMap that maps each token in the token
@@ -196,19 +181,6 @@ public class App
             }
         }
 		return tokenList;
-	}   
-
-	private static void rememberTupleGeneratedFromPattern(
-            Integer pattern,
-            Tuple2 candidateTuple) {
-		if (tuplesGeneratedFromPattern.containsKey(pattern)) {
-            tuplesGeneratedFromPattern.get(pattern).add(candidateTuple);
-		}
-		else {
-            List<Tuple2> list = new ArrayList<>();
-            list.add(candidateTuple);
-            tuplesGeneratedFromPattern.put(pattern, list);
-		} 		
 	}
 
 	private static Float calculatePatternConfidence(

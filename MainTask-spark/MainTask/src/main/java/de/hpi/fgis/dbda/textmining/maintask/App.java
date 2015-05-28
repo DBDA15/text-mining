@@ -13,6 +13,7 @@ import org.apache.spark.api.java.JavaPairRDD$;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.*;
+import org.apache.spark.storage.StorageLevel;
 
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
 import scala.Tuple2;
@@ -259,7 +260,7 @@ public class App
         	
         	JavaRDD<String> lineItems = null;
         	
-        	for (int i = 1; i < args.length; i++) {
+        	for (int i = 2; i < args.length; i++) {
         		if (lineItems == null) {
         			lineItems = context.textFile(args[i]);
         		}
@@ -271,6 +272,55 @@ public class App
         	}
 
             assert lineItems != null;
+            
+
+            JavaRDD<String> sentencesWithTags = lineItems.filter(new Function<String, Boolean>() {
+				
+				@Override
+				public Boolean call(String v1) throws Exception {
+					return v1.contains(task_entityTags.get(0)) && v1.contains(task_entityTags.get(1));
+				}
+			});
+            
+            JavaPairRDD<String, String> organizationKeyList = sentencesWithTags.flatMapToPair(new PairFlatMapFunction<String, String, String>() {
+
+				@Override
+				public Iterable<Tuple2<String, String>> call(String sentence)
+						throws Exception {
+					List<Tuple2<String, String>> keyList = new ArrayList<Tuple2<String, String>>();
+					Pattern NERTagPattern = Pattern.compile("<ORGANIZATION>(.+?)</ORGANIZATION>");
+			        Matcher NERMatcher = NERTagPattern.matcher(sentence);
+			        while (NERMatcher.find()) {
+			        	keyList.add(new Tuple2<String, String>(NERMatcher.group(1), sentence));
+			        }
+					return keyList;
+				}
+			});
+            
+            organizationKeyList.persist(StorageLevel.MEMORY_ONLY());
+            
+            JavaPairRDD<String, Void> seedTuples = context.textFile(args[1])
+            		.mapToPair(new PairFunction<String, String, Void>() {
+
+						@Override
+						public Tuple2<String, Void> call(String t)
+								throws Exception {
+							SeedTuple st = new SeedTuple(t);
+							return new Tuple2<String, Void>(st.ORGANIZATION, null);
+						}
+					});
+            
+            JavaPairRDD<String, String> organizationKeyListJoined = organizationKeyList.join(seedTuples)
+            		.mapToPair(new PairFunction<Tuple2<String,Tuple2<String,Void>>, String, String>() {
+
+						@Override
+						public Tuple2<String, String> call(
+								Tuple2<String, Tuple2<String, Void>> t)
+								throws Exception {
+							return new Tuple2<String, String>(t._1(), t._2()._1());
+						}
+					});
+            
             JavaRDD<Tuple5> rawPatterns = lineItems
                     .flatMap(new FlatMapFunction<String, Tuple5>() {
                         @Override
@@ -518,6 +568,17 @@ public class App
             String[] values = line.split("\t");
             INDEX = Integer.parseInt(values[0]);
             TEXT = values[4];
+        }
+    }
+	
+	static class SeedTuple implements Serializable {
+        String ORGANIZATION;
+        String LOCATION;
+
+        SeedTuple(String line) {
+            String[] values = line.split("\t");
+            ORGANIZATION = values[0];
+            LOCATION = values[1];
         }
     }
 }

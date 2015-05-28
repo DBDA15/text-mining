@@ -8,11 +8,15 @@ import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaPairRDD$;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
 
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
+import org.apache.spark.api.java.function.Function2;
+import org.apache.spark.api.java.function.PairFlatMapFunction;
 import scala.Tuple2;
 import scala.Tuple3;
 import scala.Tuple5;
@@ -27,7 +31,7 @@ public class App
 
     private static transient AbstractSequenceClassifier<? extends CoreMap> classifier = null;
     
-    private static final Map<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> patternsSelectivity = new LinkedHashMap<Tuple5<Map, String, Map, String, Map>, List<Tuple2>>();
+    private static final Map<Integer, List<Tuple2>> tuplesGeneratedFromPattern = new HashMap();
 
     private static String joinTuples(List<Tuple2> tupleList, String separator) {
         /*
@@ -197,18 +201,16 @@ public class App
 		return tokenList;
 	}   
 
-	private static void updatePatternSelectivity(
-			Tuple5<Map, String, Map, String, Map> pattern,
-			Tuple2 candidateTuple) {
-		if (patternsSelectivity.get(pattern) == null) {
-			List<Tuple2> list = new ArrayList<Tuple2>();
-			list.add(candidateTuple);
-			patternsSelectivity.put(pattern, list);
+	private static void rememberTupleGeneratedFromPattern(
+            Integer pattern,
+            Tuple2 candidateTuple) {
+		if (tuplesGeneratedFromPattern.containsKey(pattern)) {
+            tuplesGeneratedFromPattern.get(pattern).add(candidateTuple);
 		}
 		else {
-			List<Tuple2> list = patternsSelectivity.get(pattern);
-			list.add(candidateTuple);
-			patternsSelectivity.put(pattern, list);
+            List<Tuple2> list = new ArrayList<>();
+            list.add(candidateTuple);
+            tuplesGeneratedFromPattern.put(pattern, list);
 		} 		
 	}
 
@@ -384,25 +386,22 @@ public class App
             
             // List of <Pattern, List of Tuples>
             
-            final List<Tuple5<Map, String, Map, String, Map>> patterns = new ArrayList<Tuple5<Map, String, Map, String, Map>>();
-            
+            final List<Tuple5<Map, String, Map, String, Map>> patterns = new ArrayList();
+
+            //Remove clusters with less than 5 patterns?!
             for (List<Tuple5<Map, String, Map, String, Map>> l : clusters) {
             	if (l.size() > 5) {
 	            	Tuple5 centroid = calculateCentroid(l);
 	            	patterns.add(centroid);
             	}
             }
-            
-            final List<Tuple3<Tuple2, Tuple5, Float>> candidateTuplesWithPatternAndSimilarity = new ArrayList<Tuple3<Tuple2, Tuple5, Float>>();
-            
-            JavaRDD<Tuple3<Tuple2, Tuple5, Float>> candidateTuples = lineItems
-            		.flatMap(new FlatMapFunction<String, Tuple3<Tuple2, Tuple5, Float>>() {
 
-						@Override
-						public Iterable<Tuple3<Tuple2, Tuple5, Float>> call(String sentence) throws Exception {
+            JavaPairRDD<Tuple2, Tuple2<Integer, Float>> candidateTuples = lineItems
+            		.flatMapToPair(new PairFlatMapFunction<String, Tuple2, Tuple2<Integer, Float>>() {
+                        @Override
+                        public Iterable<Tuple2<Tuple2, Tuple2<Integer, Float>>> call(String sentence) throws Exception {
 
 							List<Tuple2> tokenList = generateTokenList(sentence);
-							List<Tuple2<Tuple2, Tuple5>> textSegmentList = new ArrayList<Tuple2<Tuple2, Tuple5>>();
 							
 							List<Integer> entity0sites = new ArrayList<Integer>();
                             List<Integer> entity1sites = new ArrayList<Integer>();
@@ -419,7 +418,8 @@ public class App
                                 tokenIndex++;
                             }
 
-                            //For each pair of A and B in the sentence, generate a pattern and add it to the list
+                            //For each pair of A and B in the sentence, generate a text segment and add it to the list
+                            List<Tuple2<Tuple2, Tuple5>> textSegmentList = new ArrayList<>();
                             for (Integer entity0site : entity0sites) {
                                 for (Integer entity1site : entity1sites) {
                                     Integer windowSize = 5;
@@ -437,45 +437,47 @@ public class App
                                     }
                                 }
                             }
-                            
-                            for (Tuple2<Tuple2, Tuple5> tupleAndContext : textSegmentList) {
-                            	Tuple2<String, String> candidateTuple = tupleAndContext._1;
-                            	Tuple5<Map, String, Map, String, Map> tupleContext = tupleAndContext._2;
-                            	Tuple5<Map, String, Map, String, Map> bestPattern = null;
+
+                            //Algorithm from figure 4
+                            //
+                            List<Tuple2<Tuple2, Tuple2<Integer, Float>>> candidateTuplesWithPatternAndSimilarity = new ArrayList();
+                            for (Tuple2<Tuple2, Tuple5> textSegment : textSegmentList) {
+
+                            	Tuple2<String, String> candidateTuple = textSegment._1();
+                            	Tuple5<Map, String, Map, String, Map> tupleContext = textSegment._2();
+
+                            	Integer bestPattern = null;
                             	float bestSimilarity = 0.0f;
-                            	for (Tuple5<Map, String, Map, String, Map> pattern : patterns) {
+                            	Integer patternIndex = 0;
+                                while (patternIndex < patterns.size()) {
+                                    Tuple5<Map, String, Map, String, Map> pattern = patterns.get(patternIndex);
                             		float similarity = calculateDegreeOfMatch(tupleContext, pattern);
                             		if (similarity >= similarityThreshold) {
-                            			updatePatternSelectivity(pattern, candidateTuple);
+                            			rememberTupleGeneratedFromPattern(patternIndex, candidateTuple);
                             			if (similarity > bestSimilarity) {
                             				bestSimilarity = similarity;
-                            				bestPattern = pattern;
+                            				bestPattern = patternIndex;
                             			}
                             		}
+                                    patternIndex++;
                             	}
                             	if (bestSimilarity >= similarityThreshold) {
-                            		candidateTuplesWithPatternAndSimilarity.add(new Tuple3<Tuple2, Tuple5, Float>(candidateTuple, bestPattern, bestSimilarity));
+                            		candidateTuplesWithPatternAndSimilarity.add(new Tuple2(candidateTuple, new Tuple2(bestPattern, bestSimilarity)));
                             	}
                             }
-							
+
 							return candidateTuplesWithPatternAndSimilarity;
 						}
 					});
-            
-            candidateTuples.saveAsTextFile(outputFile+"/candidates");
-            
-            Map<Tuple5<Map, String, Map, String, Map>, Float> patternConfidences = new LinkedHashMap<Tuple5<Map, String, Map, String, Map>, Float>();
-            
-			for (Entry<Tuple5<Map, String, Map, String, Map>, List<Tuple2>> p : patternsSelectivity.entrySet()) {
-            	if (p.getValue().size() < supportThreshold) {
-            		patternsSelectivity.remove(p.getKey());
-            	}
-            	else {
-            		patternConfidences.put(p.getKey(), calculatePatternConfidence(p.getValue(), task_seedTuples));
-            	}
+
+            Map<Integer, Float> patternConfidences = new HashMap();
+            for (Entry<Integer, List<Tuple2>> entry : tuplesGeneratedFromPattern.entrySet()) {
+                patternConfidences.put(entry.getKey(), calculatePatternConfidence(entry.getValue(), task_seedTuples));
             }
-            
-            
+
+            //TODO: calculate candidate tuple confidences
+            //TODO: filter candidate tuples based on confidence
+            candidateTuples.saveAsTextFile(outputFile + "/candidates");
             
             System.out.println("Fertisch!");
 

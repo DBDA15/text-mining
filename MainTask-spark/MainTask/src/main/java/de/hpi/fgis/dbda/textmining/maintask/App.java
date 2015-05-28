@@ -380,24 +380,6 @@ public class App
                 }
             }
             
-            // build one pattern from cluster (centroid)
-            
-            // evaluate patterns
-            
-            // add patterns to pattern list
-            
-            // search new (+ old) tuples using patterns
-            
-            // evaluate tuples
-            
-            // add tuples to tuple list
-            
-            // find new patterns using new tuples
-
-            //rawPatterns.saveAsTextFile(outputFile+"/patterns");
-            
-            // List of <Pattern, List of Tuples>
-            
             final List<Tuple5<Map, String, Map, String, Map>> patterns = new ArrayList();
 
             //Remove clusters with less than 5 patterns?!

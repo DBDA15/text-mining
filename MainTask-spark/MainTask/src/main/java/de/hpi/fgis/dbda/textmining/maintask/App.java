@@ -12,11 +12,9 @@ import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaPairRDD$;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.FlatMapFunction;
+import org.apache.spark.api.java.function.*;
 
 import edu.stanford.nlp.ie.AbstractSequenceClassifier;
-import org.apache.spark.api.java.function.Function2;
-import org.apache.spark.api.java.function.PairFlatMapFunction;
 import scala.Tuple2;
 import scala.Tuple3;
 import scala.Tuple5;
@@ -470,15 +468,43 @@ public class App
 						}
 					});
 
-            Map<Integer, Float> patternConfidences = new HashMap();
+            final Map<Integer, Float> patternConfidences = new HashMap();
             for (Entry<Integer, List<Tuple2>> entry : tuplesGeneratedFromPattern.entrySet()) {
                 patternConfidences.put(entry.getKey(), calculatePatternConfidence(entry.getValue(), task_seedTuples));
             }
 
+            JavaPairRDD<Tuple2, Float> confidenceSubtrahend = candidateTuples
+                    .combineByKey(
+                            new Function<Tuple2<Integer, Float>, Float>() {
+                                @Override
+                                public Float call(Tuple2<Integer, Float> patternMatch) throws Exception {
+                                    return 1.0f - (patternConfidences.get(patternMatch._1()) * patternMatch._2());
+                                }
+                            },
+                            new Function2<Float, Tuple2<Integer, Float>, Float>() {
+                                @Override
+                                public Float call(Float currentValue, Tuple2<Integer, Float> patternMatch) throws Exception {
+                                    return currentValue * (1.0f - (patternConfidences.get(patternMatch._1()) * patternMatch._2()));
+                                }
+                            }, new Function2<Float, Float, Float>() {
+                                @Override
+                                public Float call(Float value1, Float value2) throws Exception {
+                                    return value1 * value2;
+                                }
+                            });
+
+            JavaPairRDD<Tuple2, Float> confidences = confidenceSubtrahend
+                    .mapToPair(new PairFunction<Tuple2<Tuple2, Float>, Tuple2, Float>() {
+                        @Override
+                        public Tuple2<Tuple2, Float> call(Tuple2<Tuple2, Float> tupleAndSubtrahend) throws Exception {
+                            return new Tuple2(tupleAndSubtrahend._1(), 1.0f - tupleAndSubtrahend._2());
+                        }
+                    });
+
             //TODO: calculate candidate tuple confidences
             //TODO: filter candidate tuples based on confidence
-            candidateTuples.saveAsTextFile(outputFile + "/candidates");
-            
+            confidences.saveAsTextFile(outputFile + "/confidences");
+
             System.out.println("Fertisch!");
 
         }

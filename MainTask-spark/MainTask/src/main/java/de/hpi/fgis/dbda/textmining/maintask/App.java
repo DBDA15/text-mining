@@ -578,7 +578,7 @@ public class App
                                 }
                             });
 
-            //Finish tuple confidence calculation: <candidate tuple, tuple confidence>
+            //Finish tuple confidence calculation, with org as key: <ORG <LOC, tuple confidence>>
             JavaPairRDD<String, Tuple2> confidences = confidenceSubtrahend
                     .mapToPair(new PairFunction<Tuple2<Tuple2, Float>, String, Tuple2>() {
                         @Override
@@ -587,7 +587,7 @@ public class App
                         }
                     });
 
-            //Filter candidate tuples by their confidence: <candidate tuple, tuple confidence>
+            //Filter candidate tuples by their confidence: <ORG <LOC, tuple confidence>>
             JavaPairRDD<String, Tuple2> filteredTuples = confidences
                     .filter(new Function<Tuple2<String, Tuple2>, Boolean>() {
                         @Override
@@ -599,7 +599,7 @@ public class App
                             }
                         }
                     });
-            
+            //Filter candidate tuples by ORG, choosing highest confidence <ORG <LOC, tuple confidence>>
             JavaPairRDD<String, Tuple2> uniqueFilteredTuples = filteredTuples.reduceByKey(new Function2<Tuple2, Tuple2, Tuple2>() {
 
 				@Override
@@ -607,10 +607,20 @@ public class App
 					return (float) v1._2() > (float) v2._2() ? v1 : v2;
 				}
 			});
+            
+            JavaPairRDD<String, String> newSeedTuples = uniqueFilteredTuples
+            		.mapToPair(new PairFunction<Tuple2<String,Tuple2>, String, String>() {
 
-            uniqueFilteredTuples.saveAsTextFile(outputDirectory + "/filteredtuples");
-             
-            System.out.println(uniqueFilteredTuples.count());
+						@Override
+						public Tuple2<String, String> call(
+								Tuple2<String, Tuple2> t) throws Exception {
+							return new Tuple2<String, String>(t._1(), t._2()._1().toString());
+						}
+					});
+            
+            seedTuples = seedTuples.union(newSeedTuples);
+            
+            seedTuples.saveAsTextFile(outputDirectory + "/filteredtuples");
             System.out.println("Fertisch!");
 
         }

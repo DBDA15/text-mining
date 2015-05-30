@@ -640,7 +640,7 @@ public class App
 
                 seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples" + currentIteration);
             }
-
+            System.out.println("Seed Tuples found: "+seedTuples.count());
             System.out.println("Fertisch!");
         }
     }

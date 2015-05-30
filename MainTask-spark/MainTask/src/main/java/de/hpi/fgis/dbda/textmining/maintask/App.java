@@ -24,9 +24,20 @@ import scala.Tuple2;
 
 public class App
 {
-	
-	private static Float similarityThreshold = 0.5f;
+
+    //Parameters
+
+    private static Integer numberOfIterations = 2;
+    //Maximum size of the left window (left of first entity tag) and the right window (right of second entity tag)
+    private static Integer windowSize = 5;
+    //Maximum distance between both entity tags in tokens
+    private static Integer maxDistance = 5;
+    //Similarity threshold for clustering of patterns
+    private static Float similarityThreshold = 0.5f;
+    //Minimal degree of match for a pattern to match a text segment
+    private static Float degreeOfMatchThreshold = 0.5f;
     private static Integer minimalClusterSize = 5;
+    private static Float tupleConfidenceThreshold = 0.5f;
 
     private static Map produceContext(List<Tuple2> tokenList) {
         /*
@@ -294,7 +305,7 @@ public class App
             System.out.println("#########################");
 
             Integer currentIteration = 0;
-            Integer numberOfIterations = 2;
+
             while (currentIteration <= numberOfIterations) {
                 currentIteration += 1;
                 System.out.println("#########################");
@@ -415,8 +426,7 @@ public class App
                                 List<Tuple2<Tuple2, TupleContext>> textSegmentList = new ArrayList<>();
                                 for (Integer entity0site : entity0sites) {
                                     for (Integer entity1site : entity1sites) {
-                                        Integer windowSize = 5;
-                                        Integer maxDistance = 5;
+
                                         if (entity0site < entity1site && (entity1site - entity0site) <= maxDistance) {
                                             Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
                                             Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
@@ -451,7 +461,7 @@ public class App
                                 while (patternIndex < patterns.size()) {
                                     TupleContext pattern = patterns.get(patternIndex);
                                     float similarity = calculateDegreeOfMatch(tupleContext, pattern);
-                                    if (similarity >= similarityThreshold) {
+                                    if (similarity >= degreeOfMatchThreshold) {
                                         generatedTuples.add(new Tuple2(textSegment._1()._1(), new Tuple2(patternIndex, textSegment._1()._2())));
                                     }
                                     patternIndex++;
@@ -526,7 +536,7 @@ public class App
                                 while (patternIndex < patterns.size()) {
                                     TupleContext pattern = patterns.get(patternIndex);
                                     float similarity = calculateDegreeOfMatch(tupleContext, pattern);
-                                    if (similarity >= similarityThreshold) {
+                                    if (similarity >= degreeOfMatchThreshold) {
                                         if (similarity > bestSimilarity) {
                                             bestSimilarity = similarity;
                                             bestPattern = patternIndex;
@@ -534,7 +544,7 @@ public class App
                                     }
                                     patternIndex++;
                                 }
-                                if (bestSimilarity >= similarityThreshold) {
+                                if (bestSimilarity >= degreeOfMatchThreshold) {
                                     candidateTuplesWithPatternAndSimilarity.add(new Tuple2(bestPattern, new Tuple2(candidateTuple, bestSimilarity)));
                                 }
                                 return candidateTuplesWithPatternAndSimilarity;
@@ -596,7 +606,7 @@ public class App
                             @Override
                             public Boolean call(Tuple2<String, Tuple2<String, Float>> tupleWithConfidence) throws Exception {
                                 Float confidence = tupleWithConfidence._2()._2();
-                                if (confidence > 0.5f) {
+                                if (confidence > tupleConfidenceThreshold) {
                                     return true;
                                 } else {
                                     return false;

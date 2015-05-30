@@ -298,7 +298,7 @@ public class App
             
             organizationKeyList.persist(StorageLevel.MEMORY_ONLY());
 
-            //Read the seed tuples
+            //Read the seed tuples as pairs: <organization, location>
             JavaPairRDD<String, String> seedTuples = context.textFile(args[1])
             		.mapToPair(new PairFunction<String, String, String>() {
 
@@ -446,8 +446,8 @@ public class App
             textSegments.persist(StorageLevel.MEMORY_ONLY());
             //textSegments.saveAsTextFile(outputDirectory + "/textsegments");
 
-            //Generate pairs of ORG and pattern_id, LOC tuple when the pattern generated the tuple: <ORG, <pattern_id, LOC>>
-            JavaPairRDD<String, Tuple2<Integer, String>> generatedTuples = textSegments
+            //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
+            JavaPairRDD<String, Tuple2<Integer, String>> organizationsWithMatchedLocations = textSegments
                     .flatMapToPair(new PairFlatMapFunction<Tuple2<Tuple2, TupleContext>, String, Tuple2<Integer, String>>() {
                         @Override
                         public Iterable<Tuple2<String, Tuple2<Integer, String>>> call(Tuple2<Tuple2, TupleContext> textSegment) throws Exception {
@@ -470,43 +470,52 @@ public class App
                         }
                     });
 
-            //join tuples with patterns with seed location using organization as key
-            JavaPairRDD<String, Tuple2<Tuple2<Integer, String>, String>> tuplesWithPatternIdAndSeedLocation = generatedTuples
+            //Join location from seed tuples onto the matched locations: <organization, <<pattern_id, matched_location>, seedtuple_location>>
+            JavaPairRDD<String, Tuple2<Tuple2<Integer, String>, String>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations
                     .join(seedTuples);
 
-            // calculate true locations
-            JavaPairRDD<Integer, Float> patternsWithPositives = tuplesWithPatternIdAndSeedLocation
-            		.mapToPair(new PairFunction<Tuple2<String,Tuple2<Tuple2<Integer,String>,String>>, Integer, Float>() {
+            //Return counts of positives and negatives depending on whether matched location equals seed tuple location: <pattern_id, <#positives, #negatives>>
+            JavaPairRDD<Integer, Tuple2<Integer, Integer>> patternsWithPositiveAndNegatives = organizationsWithMatchedAndCorrectLocation
+                    .mapToPair(new PairFunction<Tuple2<String, Tuple2<Tuple2<Integer, String>, String>>, Integer, Tuple2<Integer, Integer>>() {
+                        @Override
+                        public Tuple2<Integer, Tuple2<Integer, Integer>> call(Tuple2<String, Tuple2<Tuple2<Integer, String>, String>> organizationWithMatchedAndCorrectLocation) throws Exception {
+                            Integer patternID = organizationWithMatchedAndCorrectLocation._2()._1()._1();
+                            String matchedLocation = organizationWithMatchedAndCorrectLocation._2()._1()._2();
+                            String correctLocation = organizationWithMatchedAndCorrectLocation._2()._2();
+                            if (matchedLocation.equals(correctLocation)) {
+                                return new Tuple2(patternID, new Tuple2<>(1, 0));
+                            } else {
+                                return new Tuple2(patternID, new Tuple2<>(0, 1));
+                            }
+                        }
+                    });
 
-						@Override
-						public Tuple2<Integer, Float> call(
-								Tuple2<String, Tuple2<Tuple2<Integer, String>, String>> t)
-								throws Exception {
+            //Sum up counts of positives and negatives for each pattern id: <pattern_id, <#positives, #negatives>>
+            JavaPairRDD<Integer, Tuple2<Integer, Integer>> patternsWithSummedUpPositiveAndNegatives = patternsWithPositiveAndNegatives
+                    .reduceByKey(new Function2<Tuple2<Integer, Integer>, Tuple2<Integer, Integer>, Tuple2<Integer, Integer>>() {
+                        @Override
+                        public Tuple2<Integer, Integer> call(Tuple2<Integer, Integer> posNeg1, Tuple2<Integer, Integer> posNeg2) throws Exception {
+                            Integer sumOfPositives = posNeg1._1() + posNeg2._1();
+                            Integer sumOfNegatives = posNeg1._2() + posNeg2._2();
+                            return new Tuple2(sumOfPositives, sumOfNegatives);
+                        }
+                    });
 
-							float isPositive =  t._2()._1()._2().equals(t._2()._2()) ? 1.0f : 0.0f;
-							Integer patternId = t._2()._1()._1();
-							return new Tuple2<Integer, Float>(patternId, isPositive);
-						}
-					});
-            
-            //Calculate pattern confidences for each pattern: <pattern_id, confidence> by grouping by key and "reducing"
-            JavaPairRDD<Integer, Float> patternConfidences = patternsWithPositives.groupByKey()
-            		.mapToPair(new PairFunction<Tuple2<Integer,Iterable<Float>>, Integer, Float>() {
+            //Calculate pattern confidence: <pattern_id, confidence>
+            JavaPairRDD<Integer, Float> patternConfidences = patternsWithSummedUpPositiveAndNegatives
+                    .mapToPair(new PairFunction<Tuple2<Integer, Tuple2<Integer, Integer>>, Integer, Float>() {
+                        @Override
+                        public Tuple2<Integer, Float> call(Tuple2<Integer, Tuple2<Integer, Integer>> patternWithSummedUpPositiveAndNegatives) throws Exception {
+                            Integer patternID = patternWithSummedUpPositiveAndNegatives._1();
+                            Integer positives = patternWithSummedUpPositiveAndNegatives._2()._1();
+                            Integer negatives = patternWithSummedUpPositiveAndNegatives._2()._2();
+                            Float confidence = (float) positives / (positives + negatives);
+                            return new Tuple2(patternID, confidence);
+                        }
+                    });
 
-						@Override
-						public Tuple2<Integer, Float> call(
-								Tuple2<Integer, Iterable<Float>> t)
-								throws Exception {
-							float count = 0.0f;
-							float sum = 0.0f;
-							for (Float f : t._2()) {
-								count += 1.0f;
-								sum += f;
-							}							
-							return new Tuple2<Integer, Float>(t._1(), sum/count);
-						}
-					});
-            
+            patternConfidences.saveAsTextFile(outputDirectory + "/patternconfidences");
+
             //Compile candidate tuple list: <pattern, <candidate tuple, similarity>>
             JavaPairRDD<Integer, Tuple2<Tuple2, Float>> patternsWithTuples = textSegments
                     .flatMapToPair(new PairFlatMapFunction<Tuple2<Tuple2, TupleContext>, Integer, Tuple2<Tuple2, Float>>() {
@@ -578,49 +587,57 @@ public class App
                                 }
                             });
 
-            //Finish tuple confidence calculation, with org as key: <ORG <LOC, tuple confidence>>
-            JavaPairRDD<String, Tuple2> confidences = confidenceSubtrahend
-                    .mapToPair(new PairFunction<Tuple2<Tuple2, Float>, String, Tuple2>() {
+            //Finish tuple confidence calculation, with organization as key: <organization, <location, tuple confidence>>
+            JavaPairRDD<String, Tuple2<String, Float>> confidences = confidenceSubtrahend
+                    .mapToPair(new PairFunction<Tuple2<Tuple2, Float>, String, Tuple2<String, Float>>() {
                         @Override
-                        public Tuple2<String, Tuple2> call(Tuple2<Tuple2, Float> tupleAndSubtrahend) throws Exception {
-                            return new Tuple2(tupleAndSubtrahend._1()._1(), new Tuple2(tupleAndSubtrahend._1()._2(), 1.0f - tupleAndSubtrahend._2()));
+                        public Tuple2<String, Tuple2<String, Float>> call(Tuple2<Tuple2, Float> tupleAndSubtrahend) throws Exception {
+                            String organization = (String) tupleAndSubtrahend._1()._1();
+                            String location = (String) tupleAndSubtrahend._1()._2();
+                            Float subtrahend = tupleAndSubtrahend._2();
+                            return new Tuple2(organization, new Tuple2(location, 1.0f - subtrahend));
                         }
                     });
 
-            //Filter candidate tuples by their confidence: <ORG <LOC, tuple confidence>>
-            JavaPairRDD<String, Tuple2> filteredTuples = confidences
-                    .filter(new Function<Tuple2<String, Tuple2>, Boolean>() {
+            //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>
+            JavaPairRDD<String, Tuple2<String, Float>> filteredTuples = confidences
+                    .filter(new Function<Tuple2<String, Tuple2<String, Float>>, Boolean>() {
                         @Override
-                        public Boolean call(Tuple2<String, Tuple2> tupleWithConfidence) throws Exception {
-                            if ((float) tupleWithConfidence._2()._2() > 0.4f) {
+                        public Boolean call(Tuple2<String, Tuple2<String, Float>> tupleWithConfidence) throws Exception {
+                            Float confidence = tupleWithConfidence._2()._2();
+                            if (confidence > 0.5f) {
                                 return true;
                             } else {
                                 return false;
                             }
                         }
                     });
-            //Filter candidate tuples by ORG, choosing highest confidence <ORG <LOC, tuple confidence>>
-            JavaPairRDD<String, Tuple2> uniqueFilteredTuples = filteredTuples.reduceByKey(new Function2<Tuple2, Tuple2, Tuple2>() {
 
-				@Override
-				public Tuple2 call(Tuple2 v1, Tuple2 v2) throws Exception {
-					return (float) v1._2() > (float) v2._2() ? v1 : v2;
-				}
-			});
-            
+            //Filter candidate tuples by organization, choosing highest confidence: <organization, <location, tuple confidence>>
+            JavaPairRDD<String, Tuple2<String, Float>> uniqueFilteredTuples = filteredTuples
+                    .reduceByKey(new Function2<Tuple2<String, Float>, Tuple2<String, Float>, Tuple2<String, Float>>() {
+                        @Override
+                        public Tuple2 call(Tuple2<String, Float> v1, Tuple2<String, Float> v2) throws Exception {
+                            return v1._2() > v2._2() ? v1 : v2;
+                        }
+                    });
+
+            //Store new seed tuples without their confidence: <organization, location>
             JavaPairRDD<String, String> newSeedTuples = uniqueFilteredTuples
-            		.mapToPair(new PairFunction<Tuple2<String,Tuple2>, String, String>() {
+            		.mapToPair(new PairFunction<Tuple2<String, Tuple2<String, Float>>, String, String>() {
 
-						@Override
-						public Tuple2<String, String> call(
-								Tuple2<String, Tuple2> t) throws Exception {
-							return new Tuple2<String, String>(t._1(), t._2()._1().toString());
-						}
-					});
-            
+                        @Override
+                        public Tuple2<String, String> call(Tuple2<String, Tuple2<String, Float>> t) throws Exception {
+                            String organization = t._1();
+                            String location = t._2()._1();
+                            return new Tuple2(organization, location);
+                        }
+                    });
+
+            //Add new seed tuples to the old ones
             seedTuples = seedTuples.union(newSeedTuples);
             
-            seedTuples.saveAsTextFile(outputDirectory + "/filteredtuples");
+            seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples");
             System.out.println("Fertisch!");
 
         }

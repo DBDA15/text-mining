@@ -640,7 +640,7 @@ public class App
                             }
                         });
                 
-                List<Tuple2<String, Tuple2<String, Float>>> orderedTake = uniqueFilteredTuples.takeOrdered(20, new Comparator<Tuple2<String,Tuple2<String,Float>>>() {
+                List<Tuple2<String, Tuple2<String, Float>>> orderedTake = uniqueFilteredTuples.takeOrdered(50, new Comparator<Tuple2<String,Tuple2<String,Float>>>() {
 					
 					@Override
 					public int compare(Tuple2<String, Tuple2<String, Float>> o1,

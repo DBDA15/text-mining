@@ -564,6 +564,8 @@ public class App
                             }
                         });
 
+                patternsWithTuples.saveAsTextFile(outputDirectory + "/patternsWithTuples" + currentIteration);
+
                 //Join candidate tuples with pattern confidences: <pattern_id, <<candidate tuple, similarity>, pattern_conf>>
                 JavaPairRDD<Integer, Tuple2<Tuple2<Tuple2, Float>, Float>> candidateTuplesWithPatternConfidences =
                         patternsWithTuples.join(patternConfidences);
@@ -639,25 +641,6 @@ public class App
                                 return v1._2() > v2._2() ? v1 : v2;
                             }
                         });
-                
-                List<Tuple2<String, Tuple2<String, Float>>> orderedTake = uniqueFilteredTuples.takeOrdered(50, new Comparator<Tuple2<String,Tuple2<String,Float>>>() {
-					
-					@Override
-					public int compare(Tuple2<String, Tuple2<String, Float>> o1,
-							Tuple2<String, Tuple2<String, Float>> o2) {
-						if (o1._2()._2() > o2._2()._2()) {
-							return 1;
-						}
-						else if (o1._2()._2() < o2._2()._2()) {
-							return -1;
-						}
-						else {
-							return 0;
-						}
-					}
-				});
-                
-                System.out.println(orderedTake);
 
                 //Store new seed tuples without their confidence: <organization, location>
                 JavaPairRDD<String, String> newSeedTuples = uniqueFilteredTuples

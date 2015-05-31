@@ -33,9 +33,9 @@ public class App
     //Maximum distance between both entity tags in tokens
     private static Integer maxDistance = 5;
     //Similarity threshold for clustering of patterns
-    private static Float similarityThreshold = 0.5f;
+    private static Float similarityThreshold = 0.9f;
     //Minimal degree of match for a pattern to match a text segment
-    private static Float degreeOfMatchThreshold = 0.5f;
+    private static Float degreeOfMatchThreshold = 0.9f;
     private static Integer minimalClusterSize = 5;
     private static Float tupleConfidenceThreshold = 0.9f;
 

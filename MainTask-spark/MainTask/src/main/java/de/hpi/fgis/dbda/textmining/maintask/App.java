@@ -28,7 +28,7 @@ public class App
 
     //Parameters
 
-    private static Integer numberOfIterations = 0;
+    private static Integer numberOfIterations = 1;
     //Maximum size of the left window (left of first entity tag) and the right window (right of second entity tag)
     private static Integer windowSize = 5;
     //Maximum distance between both entity tags in tokens
@@ -36,7 +36,7 @@ public class App
     //Similarity threshold for clustering of patterns
     private static Float similarityThreshold = 0.5f;
     //Minimal degree of match for a pattern to match a text segment
-    private static Float degreeOfMatchThreshold = 0.5f;
+    private static Float degreeOfMatchThreshold = 0.95f;
     private static Integer minimalClusterSize = 5;
     private static Float tupleConfidenceThreshold = 0.99f;
 
@@ -528,7 +528,7 @@ public class App
                             }
                         });
 
-                patternConfidences.saveAsTextFile(outputDirectory + "/patternconfidences");
+                //patternConfidences.saveAsTextFile(outputDirectory + "/patternconfidences");
 
                 //Compile candidate tuple list: <pattern, <candidate tuple, similarity>>
                 JavaPairRDD<Integer, Tuple2<Tuple2, Float>> patternsWithTuples = textSegments
@@ -564,7 +564,7 @@ public class App
                             }
                         });
 
-                patternsWithTuples.saveAsTextFile(outputDirectory + "/patternsWithTuples" + currentIteration);
+                //patternsWithTuples.saveAsTextFile(outputDirectory + "/patternsWithTuples" + currentIteration);
 
                 //Join candidate tuples with pattern confidences: <pattern_id, <<candidate tuple, similarity>, pattern_conf>>
                 JavaPairRDD<Integer, Tuple2<Tuple2<Tuple2, Float>, Float>> candidateTuplesWithPatternConfidences =

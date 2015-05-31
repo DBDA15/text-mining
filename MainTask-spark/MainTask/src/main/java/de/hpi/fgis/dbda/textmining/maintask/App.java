@@ -3,6 +3,7 @@ package de.hpi.fgis.dbda.textmining.maintask;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,7 +28,7 @@ public class App
 
     //Parameters
 
-    private static Integer numberOfIterations = 1;
+    private static Integer numberOfIterations = 0;
     //Maximum size of the left window (left of first entity tag) and the right window (right of second entity tag)
     private static Integer windowSize = 5;
     //Maximum distance between both entity tags in tokens
@@ -35,7 +36,7 @@ public class App
     //Similarity threshold for clustering of patterns
     private static Float similarityThreshold = 0.5f;
     //Minimal degree of match for a pattern to match a text segment
-    private static Float degreeOfMatchThreshold = 1.4f;
+    private static Float degreeOfMatchThreshold = 0.5f;
     private static Integer minimalClusterSize = 5;
     private static Float tupleConfidenceThreshold = 0.99f;
 
@@ -638,6 +639,25 @@ public class App
                                 return v1._2() > v2._2() ? v1 : v2;
                             }
                         });
+                
+                List<Tuple2<String, Tuple2<String, Float>>> orderedTake = uniqueFilteredTuples.takeOrdered(20, new Comparator<Tuple2<String,Tuple2<String,Float>>>() {
+					
+					@Override
+					public int compare(Tuple2<String, Tuple2<String, Float>> o1,
+							Tuple2<String, Tuple2<String, Float>> o2) {
+						if (o1._2()._2() > o2._2()._2()) {
+							return 1;
+						}
+						else if (o1._2()._2() < o2._2()._2()) {
+							return -1;
+						}
+						else {
+							return 0;
+						}
+					}
+				});
+                
+                System.out.println(orderedTake);
 
                 //Store new seed tuples without their confidence: <organization, location>
                 JavaPairRDD<String, String> newSeedTuples = uniqueFilteredTuples

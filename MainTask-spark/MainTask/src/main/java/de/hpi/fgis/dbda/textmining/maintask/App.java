@@ -37,7 +37,7 @@ public class App
     //Minimal degree of match for a pattern to match a text segment
     private static Float degreeOfMatchThreshold = 0.5f;
     private static Integer minimalClusterSize = 5;
-    private static Float tupleConfidenceThreshold = 0.7f;
+    private static Float tupleConfidenceThreshold = 0.9f;
 
     private static Map produceContext(List<Tuple2> tokenList) {
         /*
@@ -637,10 +637,12 @@ public class App
 
                 //Add new seed tuples to the old ones
                 seedTuples = seedTuples.union(newSeedTuples);
+                System.out.println("#########################");
+                System.out.println("Seed Tuples found: "+seedTuples.count());
+                System.out.println("#########################");
 
                 seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples" + currentIteration);
             }
-            System.out.println("Seed Tuples found: "+seedTuples.count());
             System.out.println("Fertisch!");
         }
     }

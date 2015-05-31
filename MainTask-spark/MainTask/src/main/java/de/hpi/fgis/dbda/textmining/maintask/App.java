@@ -35,7 +35,7 @@ public class App
     //Similarity threshold for clustering of patterns
     private static Float similarityThreshold = 0.5f;
     //Minimal degree of match for a pattern to match a text segment
-    private static Float degreeOfMatchThreshold = 0.9f;
+    private static Float degreeOfMatchThreshold = 2.0f;
     private static Integer minimalClusterSize = 5;
     private static Float tupleConfidenceThreshold = 0.99f;
 

@@ -380,6 +380,10 @@ public class App
                                 return patterns;
                             }
                         });
+                
+                System.out.println("#########################");
+                System.out.println("Raw Patterns found: "+rawPatterns.count());
+                System.out.println("#########################");
 
                 //Collect all raw patterns on the driver
                 List<TupleContext> patternList = rawPatterns
@@ -387,6 +391,10 @@ public class App
 
                 //Cluster patterns with a single-pass clustering algorithm
                 List<List> clusters = clusterPatterns(patternList);
+                
+                System.out.println("#########################");
+                System.out.println("Clusters found: "+clusters.size());
+                System.out.println("#########################");
 
                 //Remove clusters with less than 5 patterns?!
                 final List<TupleContext> patterns = new ArrayList();
@@ -396,6 +404,10 @@ public class App
                         patterns.add(centroid);
                     }
                 }
+                
+                System.out.println("#########################");
+                System.out.println("Patterns found: "+patterns.size());
+                System.out.println("#########################");
 
                 //System.out.println(patterns);
 
@@ -566,6 +578,10 @@ public class App
                                 return new Tuple2(candidateTuple, new Tuple2(patternConf, similarity));
                             }
                         });
+                
+                System.out.println("#########################");
+                System.out.println("Candidate Tuples found: "+candidateTuples.count());
+                System.out.println("#########################");
 
                 //Execute first step of tuple confidence calculation
                 JavaPairRDD<Tuple2, Float> confidenceSubtrahend = candidateTuples
@@ -634,12 +650,13 @@ public class App
                                 return new Tuple2(organization, location);
                             }
                         });
+                
+                System.out.println("#########################");
+                System.out.println("Seed Tuples found: "+newSeedTuples.count());
+                System.out.println("#########################");
 
                 //Add new seed tuples to the old ones
                 seedTuples = seedTuples.union(newSeedTuples);
-                System.out.println("#########################");
-                System.out.println("Seed Tuples found: "+seedTuples.count());
-                System.out.println("#########################");
 
                 seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples" + currentIteration);
             }

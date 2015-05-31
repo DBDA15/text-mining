@@ -309,7 +309,7 @@ public class App
             while (currentIteration <= numberOfIterations) {
                 currentIteration += 1;
                 System.out.println("#########################");
-                System.out.println("####Begin iteration " + currentIteration + " ####");
+                System.out.println("####Begin iteration " + currentIteration + "####");
                 System.out.println("#########################");
 
                 //Retain only those sentences with a organization from the seed tuples: <organization, <sentence, location>>

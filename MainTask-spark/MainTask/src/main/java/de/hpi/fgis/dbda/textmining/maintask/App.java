@@ -1,11 +1,7 @@
 package de.hpi.fgis.dbda.textmining.maintask;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,6 +14,7 @@ import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.api.java.function.PairFunction;
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.storage.StorageLevel;
 
 import scala.Tuple2;
@@ -157,9 +154,10 @@ public class App
         return calculateDegreeOfMatch(pattern, centroid);
     }
 
-    private static List<List> clusterPatterns(List<TupleContext> patternList) {
+    private static List<List> clusterPatterns(Iterator<TupleContext> patternIterator) {
         List<List> clusters = new ArrayList<>();
-        for (TupleContext pattern : patternList) {
+        while (patternIterator.hasNext()) {
+            TupleContext pattern = patternIterator.next();
             if (clusters.isEmpty()) {
                 List<TupleContext> newCluster = new ArrayList<>();
                 newCluster.add(pattern);
@@ -385,31 +383,39 @@ public class App
                 System.out.println("Raw Patterns found: "+rawPatterns.count());
                 System.out.println("#########################");
 
-                //Collect all raw patterns on the driver
-                List<TupleContext> patternList = rawPatterns
-                        .collect();
+                JavaRDD<TupleContext> clusteredPatterns = rawPatterns
+                        .mapPartitionsWithIndex(new Function2<Integer, Iterator<TupleContext>, Iterator<TupleContext>>() {
+                            @Override
+                            public Iterator<TupleContext> call(Integer partitionID, Iterator<TupleContext> patternIterator) throws Exception {
+                                //Cluster patterns with a single-pass clustering algorithm
+                                List<List> clusters = clusterPatterns(patternIterator);
 
-                //Cluster patterns with a single-pass clustering algorithm
-                List<List> clusters = clusterPatterns(patternList);
-                
+                                System.out.println("#########################");
+                                System.out.println("Clusters found on partition " + partitionID + ": " + clusters.size());
+                                System.out.println("#########################");
+
+                                //Remove clusters with less than 5 patterns?!
+                                final List<TupleContext> patterns = new ArrayList();
+                                for (List<TupleContext> l : clusters) {
+                                    if (l.size() >= minimalClusterSize) {
+                                        TupleContext centroid = calculateCentroid(l);
+                                        patterns.add(centroid);
+                                    }
+                                }
+
+                                System.out.println("#########################");
+                                System.out.println("Patterns found on partition " + partitionID + ": " + patterns.size());
+                                System.out.println("#########################");
+                                return patterns.iterator();
+                            }
+                        }, false);
+
                 System.out.println("#########################");
-                System.out.println("Clusters found: "+clusters.size());
+                System.out.println("Patterns found: "+clusteredPatterns.count());
                 System.out.println("#########################");
 
-                //Remove clusters with less than 5 patterns?!
-                final List<TupleContext> patterns = new ArrayList();
-                for (List<TupleContext> l : clusters) {
-                    if (l.size() >= minimalClusterSize) {
-                        TupleContext centroid = calculateCentroid(l);
-                        patterns.add(centroid);
-                    }
-                }
-                
-                System.out.println("#########################");
-                System.out.println("Patterns found: "+patterns.size());
-                System.out.println("#########################");
-
-                //System.out.println(patterns);
+                final List<TupleContext> patterns = clusteredPatterns.collect();
+                final Broadcast<List<TupleContext>> broadcastPatterns = context.broadcast(patterns);
 
                 //Search sentences for occurrences of the two entity tags
                 //Returns: List of <tuple, context>
@@ -470,8 +476,9 @@ public class App
                                 TupleContext tupleContext = textSegment._2();
 
                                 Integer patternIndex = 0;
-                                while (patternIndex < patterns.size()) {
-                                    TupleContext pattern = patterns.get(patternIndex);
+                                final List<TupleContext> patternsUnpacked = broadcastPatterns.value();
+                                while (patternIndex < patternsUnpacked.size()) {
+                                    TupleContext pattern = patternsUnpacked.get(patternIndex);
                                     float similarity = calculateDegreeOfMatch(tupleContext, pattern);
                                     if (similarity >= degreeOfMatchThreshold) {
                                         generatedTuples.add(new Tuple2(textSegment._1()._1(), new Tuple2(patternIndex, textSegment._1()._2())));
@@ -545,8 +552,9 @@ public class App
                                 Integer bestPattern = null;
                                 float bestSimilarity = 0.0f;
                                 Integer patternIndex = 0;
-                                while (patternIndex < patterns.size()) {
-                                    TupleContext pattern = patterns.get(patternIndex);
+                                final List<TupleContext> patternsUnpacked = broadcastPatterns.value();
+                                while (patternIndex < patternsUnpacked.size()) {
+                                    TupleContext pattern = patternsUnpacked.get(patternIndex);
                                     float similarity = calculateDegreeOfMatch(tupleContext, pattern);
                                     if (similarity >= degreeOfMatchThreshold) {
                                         if (similarity > bestSimilarity) {

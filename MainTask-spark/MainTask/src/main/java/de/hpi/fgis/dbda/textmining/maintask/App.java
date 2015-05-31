@@ -27,7 +27,7 @@ public class App
 
     //Parameters
 
-    private static Integer numberOfIterations = 2;
+    private static Integer numberOfIterations = 0;
     //Maximum size of the left window (left of first entity tag) and the right window (right of second entity tag)
     private static Integer windowSize = 5;
     //Maximum distance between both entity tags in tokens
@@ -35,7 +35,7 @@ public class App
     //Similarity threshold for clustering of patterns
     private static Float similarityThreshold = 0.5f;
     //Minimal degree of match for a pattern to match a text segment
-    private static Float degreeOfMatchThreshold = 2.0f;
+    private static Float degreeOfMatchThreshold = 0.9f;
     private static Integer minimalClusterSize = 5;
     private static Float tupleConfidenceThreshold = 0.99f;
 

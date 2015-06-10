@@ -223,5 +223,17 @@ public class App {
 
 		@Parameter(description = "input tsv files", required = true)
 		public List<String> inputFiles = new ArrayList<String>();
+
+        @Parameter(names = "--parallelism", description = "degree of parallelism for the job execution")
+        public int parallelism = -1;
+
+        @Parameter(names = "--jars", description = "set of jars that are relevant to the execution of SINDY")
+        public List<String> jars = null;
+
+        @Parameter(names = "--executor", description = "<host name>:<port> of the Flink cluster")
+        public String executor = null;
+
+        @Parameter(names = "--distinct-attribute-groups", description = "whether to use only distinct attribute groups")
+        public boolean isUseDistinctAttributeGroups = false;
 	}
 }

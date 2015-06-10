@@ -38,4 +38,63 @@
         <version>6.5.15</version>
     </dependency>
   </dependencies>
+  
+  <build>
+        <plugins>
+
+            <!-- We use the maven-assembly plugin to create a fat jar that contains all dependencies
+			except flink and it's transitive dependencies. The resulting fat-jar can be executed
+			on a cluster. Change the value of Program-Class if your program entry point changes. -->
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>2.4.1</version>
+                <configuration>
+                    <descriptors>
+                        <descriptor>src/assembly/flink-fat-jar.xml</descriptor>
+                        <descriptor>src/assembly/gather-dependencies.xml</descriptor>
+                    </descriptors>
+                    <archive>
+                        <manifest>
+                            <mainClass>de.hpi.fgis.dbda.textmining.MainTask_flink.App</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-assembly</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Configure the jar plugin to add the main class as a manifest entry -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Main-Class>de.hpi.fgis.dbda.textmining.MainTask_flink.App</Main-Class>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.1</version>
+                <configuration>
+                    <source>1.7</source>
+                    <!-- If you want to use Java 8, change this to "1.8" -->
+                    <target>1.7</target>
+                    <!-- If you want to use Java 8, change this to "1.8" -->
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+  
 </project>

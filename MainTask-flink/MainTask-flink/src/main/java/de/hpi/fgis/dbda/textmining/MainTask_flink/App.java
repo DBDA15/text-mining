@@ -4,9 +4,11 @@ package de.hpi.fgis.dbda.textmining.MainTask_flink;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
+
 import de.hpi.fgis.dbda.textmining.functions.*;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.io.RemoteCollectorConsumer;
@@ -51,53 +53,21 @@ public class App {
 		// Read and parse the input files.
 		this.filesByAttributeIndexOffset = new Int2ObjectOpenHashMap<>();
 		Collection<String> inputPaths = loadInputPaths();
-		DataSet<Tuple2<int[], String>> cells = null;
+		DataSet<String> allLines = null;
 		int cellIndexOffset = 0;
 		for (String path : inputPaths) {
 
 			DataSource<String> lines = env.readTextFile(path).name("Load " + path);
 
-			DataSet<Tuple2<int[], String>> fileCells = lines
-					.flatMap(new CreateCells(';', cellIndexOffset))
-					.name("Parse " + path);
-
-			this.filesByAttributeIndexOffset.put(cellIndexOffset, path);
-			cellIndexOffset += ATTRIBUTE_INDEX_OFFSET;
-
-			if (cells == null) {
-				cells = fileCells;
+			if (allLines == null) {
+				allLines = lines;
 			} else {
-				cells = cells.union(fileCells);
+				allLines = allLines.union(lines);
 			}
 
 		}
-
-		// Join the cells and keep the attribute groups.
-		DataSet<Tuple1<int[]>> attributeGroups = cells
-				.groupBy(1).reduceGroup(new MergeCells())
-				.name("Merge cells")
-				.project(0);
-
-		// If requested, remove duplicate attribute groups.
-		if (this.parameters.isUseDistinctAttributeGroups) {
-			attributeGroups = attributeGroups
-					.map(new ConvertIntArrayToString()).name("Encode attribute groups as Base64")
-					.distinct()
-					.map(new CovertStringToIntArray()).name("Decode attribute groups from Base64");
-		}
-
-		// Create IND evidences from the attribute groups.
-		DataSet<Tuple2<Integer, int[]>> indEvidences = attributeGroups.flatMap(new CreateIndEvidences());
-
-		// Merge the IND evidences to actual INDs.
-		DataSet<Tuple2<Integer, int[]>> inds = indEvidences
-				.groupBy(0).reduceGroup(new MergeIndEvidences())
-				.name("Merge IND evidences")
-				.filter(new FilterEmptyIndSets())
-				.name("Filter empty IND sets");
-
-		// Have the INDs sent to the drivers and print them to the stdout.
-		collectAndPrintInds(inds);
+		
+		DataSet<String> sentencesWithTags = allLines.filter(new FilterByTags("ORGANIZATION", "LOCATION"));
 
 		// Trigger the job execution and measure the exeuction time.
 		long startTime = System.currentTimeMillis();

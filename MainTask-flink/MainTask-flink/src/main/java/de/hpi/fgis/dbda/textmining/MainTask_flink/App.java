@@ -198,19 +198,30 @@ public class App {
 			}
 		}
 
-		@Parameter(description = "input CSV files", required = true)
+		//Parameters
+
+		@Parameter(description = "Number of Snowball iterations", required = true)
+		public int numberOfIterations;
+
+		@Parameter(description = "Maximum size of the left window (left of first entity tag) and the right window (right of second entity tag)", required = true)
+		public int windowSize;
+
+		@Parameter(description = "Maximum distance between both entity tags in tokens", required = true)
+		public int maxDistance;
+
+		@Parameter(description = "Similarity threshold for clustering of patterns", required = true)
+		public float similarityThreshold;
+
+		@Parameter(description = "Minimal degree of match for a pattern to match a text segment", required = true)
+		public float degreeOfMatchThreshold;
+
+		@Parameter(description = "Minimal size of cluster", required = true)
+		public int minimalClusterSize;
+
+		@Parameter(description = "Threshold for tuple confidence", required = true)
+		public float tupleConfidenceThreshold;
+
+		@Parameter(description = "input tsv files", required = true)
 		public List<String> inputFiles = new ArrayList<String>();
-
-		@Parameter(names = "--parallelism", description = "degree of parallelism for the job execution")
-		public int parallelism = -1;
-
-		@Parameter(names = "--jars", description = "set of jars that are relevant to the execution of SINDY")
-		public List<String> jars = null;
-
-		@Parameter(names = "--executor", description = "<host name>:<port> of the Flink cluster")
-		public String executor = null;
-
-		@Parameter(names = "--distinct-attribute-groups", description = "whether to use only distinct attribute groups")
-		public boolean isUseDistinctAttributeGroups = false;
 	}
 }

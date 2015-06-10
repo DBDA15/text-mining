@@ -17,7 +17,6 @@ import org.apache.flink.util.Collector;
  * @since 05.06.2015
  */
 @FunctionAnnotation.ReadFields("1")
-@FunctionAnnotation.ConstantFields({"0", "1"})
 public class FilterEmptyIndSets implements FilterFunction<Tuple2<Integer, int[]>> {
 
 	@Override

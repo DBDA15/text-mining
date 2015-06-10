@@ -16,7 +16,6 @@ import org.apache.flink.util.Collector;
  * @since 05.06.2015
  */
 @RichGroupReduceFunction.Combinable
-@FunctionAnnotation.ConstantFields("0")
 public class MergeIndEvidences extends RichGroupReduceFunction<Tuple2<Integer, int[]>, Tuple2<Integer, int[]>> {
 
 	private final IntSet aggregator = new IntOpenHashSet();

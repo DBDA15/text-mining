@@ -68,7 +68,9 @@ public class App {
 		}
 		
 		DataSet<String> sentencesWithTags = allLines.filter(new FilterByTags("ORGANIZATION", "LOCATION"));
-
+		
+		sentencesWithTags.print();
+				
 		// Trigger the job execution and measure the exeuction time.
 		long startTime = System.currentTimeMillis();
         try {

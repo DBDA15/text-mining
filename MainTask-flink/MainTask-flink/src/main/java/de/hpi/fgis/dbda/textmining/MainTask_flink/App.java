@@ -14,6 +14,8 @@ import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.io.RemoteCollectorConsumer;
 import org.apache.flink.api.java.io.RemoteCollectorImpl;
 import org.apache.flink.api.java.operators.DataSource;
+import org.apache.flink.api.java.operators.JoinOperator.DefaultJoin;
+import org.apache.flink.api.java.operators.JoinOperator.JoinOperatorSets;
 import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FileStatus;
@@ -71,7 +73,15 @@ public class App {
 		
 		DataSet<String> sentencesWithTags = allLines.filter(new FilterByTags("ORGANIZATION", "LOCATION"));
 		
-		System.out.println("sentencesWithTags count: "+sentencesWithTags.count());
+		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples());
+
+		System.out.println("organizationSentenceTuples count: "+organizationSentenceTuples.count());
+		
+		DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
+		
+		DataSet<Tuple2<Tuple2<String, String>, Tuple2<String, String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples).where(0).equalTo(0);
+		
+		System.out.println("organizationKeyListJoined count: "+organizationKeyListJoined.count());
 				
 		// Trigger the job execution and measure the exeuction time.
 		long startTime = System.currentTimeMillis();
@@ -203,6 +213,9 @@ public class App {
 		}
 
 		//Parameters
+
+		@Parameter(names = "--seedTuples", description = "Seed tuple file", required = true)
+		public String seedTuples;
 
 		@Parameter(names = "--iterations", description = "Number of Snowball iterations", required = true)
 		public int numberOfIterations;

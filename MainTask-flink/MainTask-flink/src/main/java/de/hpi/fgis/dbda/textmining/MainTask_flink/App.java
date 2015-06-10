@@ -245,9 +245,6 @@ public class App {
 		@Parameter(description = "Minimal degree of match for a pattern to match a text segment", required = true)
 		public float degreeOfMatchThreshold;
 
-		@Parameter(description = "Maximum distance between both entity tags in tokens", required = true)
-		public int maxDistance;
-
 		@Parameter(description = "Minimal size of cluster", required = true)
 		public int minimalClusterSize;
 

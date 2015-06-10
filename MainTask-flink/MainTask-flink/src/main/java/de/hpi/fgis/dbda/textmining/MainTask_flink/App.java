@@ -67,9 +67,11 @@ public class App {
 
 		}
 		
+		System.out.println("allLines count: "+allLines.count());
+		
 		DataSet<String> sentencesWithTags = allLines.filter(new FilterByTags("ORGANIZATION", "LOCATION"));
 		
-		sentencesWithTags.print();
+		System.out.println("sentencesWithTags count: "+sentencesWithTags.count());
 				
 		// Trigger the job execution and measure the exeuction time.
 		long startTime = System.currentTimeMillis();
@@ -202,25 +204,25 @@ public class App {
 
 		//Parameters
 
-		@Parameter(description = "Number of Snowball iterations", required = true)
+		@Parameter(names = "--iterations", description = "Number of Snowball iterations", required = true)
 		public int numberOfIterations;
 
-		@Parameter(description = "Maximum size of the left window (left of first entity tag) and the right window (right of second entity tag)", required = true)
+		@Parameter(names = "--windowSize", description = "Maximum size of the left window (left of first entity tag) and the right window (right of second entity tag)", required = true)
 		public int windowSize;
 
-		@Parameter(description = "Maximum distance between both entity tags in tokens", required = true)
+		@Parameter(names = "--maxDistance", description = "Maximum distance between both entity tags in tokens", required = true)
 		public int maxDistance;
 
-		@Parameter(description = "Similarity threshold for clustering of patterns", required = true)
+		@Parameter(names = "--similarityThreshold", description = "Similarity threshold for clustering of patterns", required = true)
 		public float similarityThreshold;
 
-		@Parameter(description = "Minimal degree of match for a pattern to match a text segment", required = true)
+		@Parameter(names = "--degreeOfMatchThreshold", description = "Minimal degree of match for a pattern to match a text segment", required = true)
 		public float degreeOfMatchThreshold;
 
-		@Parameter(description = "Minimal size of cluster", required = true)
+		@Parameter(names = "--minimalClusterSize", description = "Minimal size of cluster", required = true)
 		public int minimalClusterSize;
 
-		@Parameter(description = "Threshold for tuple confidence", required = true)
+		@Parameter(names = "--tupleConfidenceThreshold", description = "Threshold for tuple confidence", required = true)
 		public float tupleConfidenceThreshold;
 
 		@Parameter(description = "input tsv files", required = true)

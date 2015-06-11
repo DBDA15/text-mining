@@ -96,7 +96,24 @@ public class App {
         DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags));
 
         System.out.println("Raw patterns count: "+rawPatterns.count());
-        rawPatterns.print();
+
+        //TODO: Distribute clustering
+        //Collect all raw patterns on the driver
+        List<TupleContext> patternList = rawPatterns.collect();
+
+        //Cluster patterns with a single-pass clustering algorithm
+        List<List> clusters = clusterPatterns(patternList, parameters.similarityThreshold);
+
+        //Remove clusters with less than 5 patterns?!
+        final List<TupleContext> patterns = new ArrayList();
+        for (List<TupleContext> l : clusters) {
+            if (l.size() >= parameters.minimalClusterSize) {
+                TupleContext centroid = calculateCentroid(l);
+                patterns.add(centroid);
+            }
+        }
+
+        System.out.println(patterns);
 
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
@@ -184,6 +201,130 @@ public class App {
             context.put(entry.getKey(), (float) entry.getValue() / sumCounts);
         }
         return context;
+    }
+
+    private static float sumCollection(Collection<Float> col) {
+        float sum = 0.0f;
+        for (float o : col) {
+            sum += o;
+        }
+        return sum;
+    }
+
+    private static TupleContext calculateCentroid(List<TupleContext> patterns) {
+        Map<String, Float> leftCounter = new LinkedHashMap();
+        Map<String, Float>  middleCounter = new LinkedHashMap();
+        Map<String, Float>  rightCounter = new LinkedHashMap();
+
+        String leftEntity = patterns.get(0)._2();
+        String rightEntity = patterns.get(0)._4();
+
+        //Add up all contexts
+        for (TupleContext pattern : patterns) {
+            leftCounter = sumMaps(leftCounter, pattern._1());
+            middleCounter = sumMaps(middleCounter, pattern._3());
+            rightCounter = sumMaps(rightCounter, pattern._5());
+        }
+
+        //Normalize counters
+        float leftSum = sumCollection(leftCounter.values());
+        float middleSum = sumCollection(middleCounter.values());
+        float rightSum = sumCollection(rightCounter.values());
+
+        for (String key : leftCounter.keySet()) {
+            leftCounter.put(key, leftCounter.get(key) / leftSum);
+        }
+        for (String key : middleCounter.keySet()) {
+            middleCounter.put(key, middleCounter.get(key) / middleSum);
+        }
+        for (String key : rightCounter.keySet()) {
+            rightCounter.put(key, rightCounter.get(key) / rightSum);
+        }
+
+        return new TupleContext(leftCounter, leftEntity, middleCounter, rightEntity, rightCounter);
+    }
+
+    private static Map sumMaps(Map<String, Float> map1, Map<String, Float> map2) {
+        //Add all values of map2 to map1
+        for (Map.Entry<String, Float> entry : map2.entrySet()) {
+            if (map1.containsKey(entry.getKey())) {
+                map1.put(entry.getKey(), map1.get(entry.getKey()) + entry.getValue());
+            } else {
+                map1.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return map1;
+    }
+
+    private static Float calculateDegreeOfMatch(TupleContext pattern, TupleContext tuple) {
+        Map<String, Float> centroidLeft = tuple._1();
+        Map<String, Float> centroidMiddle = tuple._3();
+        Map<String, Float> centroidRight = tuple._5();
+
+        Map<String, Float> patternLeft = pattern._1();
+        Map<String, Float> patternMiddle = pattern._3();
+        Map<String, Float> patternRight = pattern._5();
+
+        if (pattern._2().equals(tuple._2()) && pattern._4().equals(tuple._4())) {
+            float leftSimilarity = 0;
+            float middleSimilarity = 0;
+            float rightSimilarity = 0;
+            for (String key : patternLeft.keySet()) {
+                if (centroidLeft.keySet().contains(key)) {
+                    leftSimilarity += patternLeft.get(key) * centroidLeft.get(key);
+                }
+            }
+            for (String key : patternMiddle.keySet()) {
+                if (centroidMiddle.keySet().contains(key)) {
+                    middleSimilarity += patternMiddle.get(key) * centroidMiddle.get(key);
+                }
+            }
+            for (String key : patternRight.keySet()) {
+                if (centroidRight.keySet().contains(key)) {
+                    rightSimilarity += patternRight.get(key) * centroidRight.get(key);
+                }
+            }
+            return leftSimilarity + middleSimilarity + rightSimilarity;
+        } else {
+            return 0.0f;
+        }
+    }
+
+    private static Float calculateDegreeOfMatchWithCluster(TupleContext pattern, List<TupleContext> cluster) {
+        TupleContext centroid = calculateCentroid(cluster);
+        return calculateDegreeOfMatch(pattern, centroid);
+    }
+
+    private static List<List> clusterPatterns(List<TupleContext> patternList, float similarityThreshold) {
+        List<List> clusters = new ArrayList<>();
+        for (TupleContext pattern : patternList) {
+            if (clusters.isEmpty()) {
+                List<TupleContext> newCluster = new ArrayList<>();
+                newCluster.add(pattern);
+                clusters.add(newCluster);
+            } else {
+                Integer clusterIndex = 0;
+                Integer nearestCluster = null;
+                Float greatestSimilarity = 0.0f;
+                for (List<TupleContext> cluster : clusters) {
+                    Float similarity = calculateDegreeOfMatchWithCluster(pattern, cluster);
+                    if (similarity > greatestSimilarity) {
+                        nearestCluster = clusterIndex;
+                        greatestSimilarity = similarity;
+                    }
+                    clusterIndex++;
+                }
+
+                if (greatestSimilarity > similarityThreshold) {
+                    clusters.get(nearestCluster).add(pattern);
+                } else {
+                    List<TupleContext> separateCluster = new ArrayList<>();
+                    separateCluster.add(pattern);
+                    clusters.add(separateCluster);
+                }
+            }
+        }
+        return clusters;
     }
 
 	/** Converts an attribute index into the form file[index]. */

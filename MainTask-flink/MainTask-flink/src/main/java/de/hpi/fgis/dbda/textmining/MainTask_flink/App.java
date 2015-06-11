@@ -104,6 +104,8 @@ public class App {
         //Cluster patterns with a single-pass clustering algorithm
         List<List> clusters = clusterPatterns(patternList, parameters.similarityThreshold);
 
+        System.out.println("Cluster size: " + clusters.size());
+
         //Remove clusters with less than 5 patterns?!
         final List<TupleContext> patterns = new ArrayList();
         for (List<TupleContext> l : clusters) {
@@ -113,8 +115,18 @@ public class App {
             }
         }
 
-        System.out.println(patterns);
-
+        System.out.println("Patterns size: " + patterns.size());
+        
+	    //Search sentences for occurrences of the two entity tags
+	    //Returns: List of <tuple, context>
+	    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize));
+	    
+	    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
+	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegments.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold, patterns));
+	    
+	    //Join location from seed tuples onto the matched locations: <organization, <<pattern_id, matched_location>, seedtuple_location>>
+        DataSet<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations.join(seedTuples).where(0).equalTo(0);
+        
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
         try {
@@ -137,71 +149,6 @@ public class App {
 			}
 		});
 	}
-
-    public static List<scala.Tuple2> generateTokenList(String sentence) {
-        //Create regex pattern that finds NER XML tags in the sentence (e.g. "<LOCATION>New York</LOCATION>")
-        Pattern NERTagPattern = Pattern.compile("<([A-Z]+)>(.+?)</([A-Z]+)>");
-        Matcher NERMatcher = NERTagPattern.matcher(sentence);
-
-        //Store all tokens in a list of 2-tuples <string, NER tag>
-        List<scala.Tuple2> tokenList = new ArrayList();
-        Integer lastIndex = 0;
-        //Iterate through all occurences of the regex pattern
-        while (NERMatcher.find()) {
-            //First, add the normal words (i.e. w/o NER tags) to the token list
-            //Add them as 2-tuples <string, "">
-            String stringBefore = sentence.substring(lastIndex, NERMatcher.start());
-            String[] splittedStringBefore = stringBefore.split(" ");
-            for (String word : splittedStringBefore) {
-                if (!word.isEmpty()) {
-                    tokenList.add(new scala.Tuple2(word, ""));
-                }
-            }
-
-            //Then, add the NER-tagged tokens to the token list
-            //Add them as 2 tuples <string, NER tag>
-            tokenList.add(new scala.Tuple2(NERMatcher.group(2), NERMatcher.group(1)));
-
-            //Remember last processed character
-            lastIndex = NERMatcher.end();
-        }
-        //Lastly, add the normal words (i.e. w/o NER tags) after the last NER tag
-        //Add them as 2-tuples <string, "">
-        String endString = sentence.substring(lastIndex, sentence.length());
-        String[] splittedEndString = endString.split(" ");
-        for (String word : splittedEndString) {
-            if (!word.isEmpty()) {
-                tokenList.add(new scala.Tuple2(word, ""));
-            }
-        }
-        return tokenList;
-    }
-
-    public static Map produceContext(List<scala.Tuple2> tokenList) {
-        /*
-           Produce the context based on a given token list. A context is a HashMap that maps each token in the token
-           list to a weight. The more prominent or frequent a token is, the higher is the associated weight.
-         */
-        Map<String, Integer> termCounts = new LinkedHashMap();
-
-        //Count how often each token occurs
-        Integer sumCounts = 0;
-        for (scala.Tuple2<String, String> token : tokenList) {
-            if (!termCounts.containsKey(token._1())) {
-                termCounts.put(token._1(), 1);
-            } else {
-                termCounts.put(token._1(), termCounts.get(token._1()) + 1);
-            }
-            sumCounts += 1;
-        }
-
-        //Calculate token frequencies out of the counts
-        Map<String, Float> context = new LinkedHashMap();
-        for (Map.Entry<String, Integer> entry : termCounts.entrySet()) {
-            context.put(entry.getKey(), (float) entry.getValue() / sumCounts);
-        }
-        return context;
-    }
 
     private static float sumCollection(Collection<Float> col) {
         float sum = 0.0f;
@@ -244,6 +191,11 @@ public class App {
         return new TupleContext(leftCounter, leftEntity, middleCounter, rightEntity, rightCounter);
     }
 
+    private static Float calculateDegreeOfMatchWithCluster(TupleContext pattern, List<TupleContext> cluster) {
+        TupleContext centroid = calculateCentroid(cluster);
+        return DegreeOfMatchCalculator.calculateDegreeOfMatch(pattern, centroid);
+    }
+
     private static Map sumMaps(Map<String, Float> map1, Map<String, Float> map2) {
         //Add all values of map2 to map1
         for (Map.Entry<String, Float> entry : map2.entrySet()) {
@@ -254,45 +206,6 @@ public class App {
             }
         }
         return map1;
-    }
-
-    private static Float calculateDegreeOfMatch(TupleContext pattern, TupleContext tuple) {
-        Map<String, Float> centroidLeft = tuple._1();
-        Map<String, Float> centroidMiddle = tuple._3();
-        Map<String, Float> centroidRight = tuple._5();
-
-        Map<String, Float> patternLeft = pattern._1();
-        Map<String, Float> patternMiddle = pattern._3();
-        Map<String, Float> patternRight = pattern._5();
-
-        if (pattern._2().equals(tuple._2()) && pattern._4().equals(tuple._4())) {
-            float leftSimilarity = 0;
-            float middleSimilarity = 0;
-            float rightSimilarity = 0;
-            for (String key : patternLeft.keySet()) {
-                if (centroidLeft.keySet().contains(key)) {
-                    leftSimilarity += patternLeft.get(key) * centroidLeft.get(key);
-                }
-            }
-            for (String key : patternMiddle.keySet()) {
-                if (centroidMiddle.keySet().contains(key)) {
-                    middleSimilarity += patternMiddle.get(key) * centroidMiddle.get(key);
-                }
-            }
-            for (String key : patternRight.keySet()) {
-                if (centroidRight.keySet().contains(key)) {
-                    rightSimilarity += patternRight.get(key) * centroidRight.get(key);
-                }
-            }
-            return leftSimilarity + middleSimilarity + rightSimilarity;
-        } else {
-            return 0.0f;
-        }
-    }
-
-    private static Float calculateDegreeOfMatchWithCluster(TupleContext pattern, List<TupleContext> cluster) {
-        TupleContext centroid = calculateCentroid(cluster);
-        return calculateDegreeOfMatch(pattern, centroid);
     }
 
     private static List<List> clusterPatterns(List<TupleContext> patternList, float similarityThreshold) {

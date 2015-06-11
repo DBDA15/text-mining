@@ -1,14 +1,17 @@
 package de.hpi.fgis.dbda.textmining.functions;
 
-import de.hpi.fgis.dbda.textmining.MainTask_flink.App;
-import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.util.Collector;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import de.hpi.fgis.dbda.textmining.MainTask_flink.App;
+import de.hpi.fgis.dbda.textmining.MainTask_flink.ContextProducer;
+import de.hpi.fgis.dbda.textmining.MainTask_flink.TokenListGenerator;
+import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
 
 public class SearchRawPatterns implements FlatMapFunction<Tuple2<Tuple2<String, String>, Tuple2<String, String>>, TupleContext> {
 
@@ -26,7 +29,7 @@ public class SearchRawPatterns implements FlatMapFunction<Tuple2<Tuple2<String, 
 		String sentence = t.f0.f1;
 		String seedTupleLocation = t.f1.f1;
 
-		List<scala.Tuple2> tokenList = App.generateTokenList(sentence);
+		List<Tuple2> tokenList = TokenListGenerator.generateTokenList(sentence);
 
 	                            /*
 	                            Now, the token list look like this:
@@ -43,9 +46,9 @@ public class SearchRawPatterns implements FlatMapFunction<Tuple2<Tuple2<String, 
 		List<Integer> entity0sites = new ArrayList<Integer>();
 		List<Integer> entity1sites = new ArrayList<Integer>();
 		Integer tokenIndex = 0;
-		for (scala.Tuple2<String, String> wordEntity : tokenList) {
-			String word = wordEntity._1();
-			String entity = wordEntity._2();
+		for (Tuple2<String, String> wordEntity : tokenList) {
+			String word = wordEntity.f0;
+			String entity = wordEntity.f1;
 
 			if (word.equals(seedTupleOrg) && entity.equals(this.entities.get(0))) {
 				entity0sites.add(tokenIndex);
@@ -61,15 +64,15 @@ public class SearchRawPatterns implements FlatMapFunction<Tuple2<Tuple2<String, 
 				Integer windowSize = 5;
 				Integer maxDistance = 5;
 				if (entity0site < entity1site && (entity1site - entity0site) <= maxDistance) {
-					Map beforeContext = App.produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
-					Map betweenContext = App.produceContext(tokenList.subList(entity0site + 1, entity1site));
-					Map afterContext = App.produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
+					Map beforeContext = ContextProducer.produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
+					Map betweenContext = ContextProducer.produceContext(tokenList.subList(entity0site + 1, entity1site));
+					Map afterContext = ContextProducer.produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
 					TupleContext pattern = new TupleContext(beforeContext, this.entities.get(0), betweenContext, this.entities.get(1), afterContext);
 					results.collect(pattern);
 				} else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
-					Map beforeContext = App.produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
-					Map betweenContext = App.produceContext(tokenList.subList(entity1site + 1, entity0site));
-					Map afterContext = App.produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
+					Map beforeContext = ContextProducer.produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
+					Map betweenContext = ContextProducer.produceContext(tokenList.subList(entity1site + 1, entity0site));
+					Map afterContext = ContextProducer.produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
 					TupleContext pattern = new TupleContext(beforeContext, this.entities.get(1), betweenContext, this.entities.get(0), afterContext);
                     results.collect(pattern);
 				}

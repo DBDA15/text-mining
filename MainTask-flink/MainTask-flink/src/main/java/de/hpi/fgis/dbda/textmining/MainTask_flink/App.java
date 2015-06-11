@@ -23,10 +23,9 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Implementation of the SINDY algorithm for scalable IND discovery. */
 public class App {
@@ -39,9 +38,12 @@ public class App {
 	/** Maps attribute indexes to files. */
 	private Int2ObjectMap<String> filesByAttributeIndexOffset;
 
+    //Initialize entity tags for the relation extraction
+    final List<String> task_entityTags = new ArrayList<>();
+
 	public static void main(String[] args) throws Exception {
-		App sindy = new App(args);
-		sindy.run();
+		App snowball = new App(args);
+		snowball.run();
 	}
 
 	public App(String[] args) {
@@ -52,7 +54,10 @@ public class App {
 		// Load the execution environment.
 		final ExecutionEnvironment env = createExecutionEnvironment();
 
-		// Read and parse the input files.
+        task_entityTags.add("ORGANIZATION");
+        task_entityTags.add("LOCATION");
+
+		// Read and parse the input sentences.
 		this.filesByAttributeIndexOffset = new Int2ObjectOpenHashMap<>();
 		Collection<String> inputPaths = loadInputPaths();
 		DataSet<String> allLines = null;
@@ -69,29 +74,39 @@ public class App {
 
 		}
 		
-		System.out.println("allLines count: "+allLines.count());
-		
-		DataSet<String> sentencesWithTags = allLines.filter(new FilterByTags("ORGANIZATION", "LOCATION"));
-		
+		System.out.println("allLines count: " + allLines.count());
+
+        //Filter sentences: retain only those that contain both entity tags
+		DataSet<String> sentencesWithTags = allLines.filter(new FilterByTags(task_entityTags));
+
+        //Generate a mapping <organization, sentence>
 		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples());
 
 		System.out.println("organizationSentenceTuples count: "+organizationSentenceTuples.count());
-		
+
+        //Read the seed tuples as pairs: <organization, location>
 		DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
-		
-		DataSet<Tuple2<Tuple2<String, String>, Tuple2<String, String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples).where(0).equalTo(0);
-		
-		System.out.println("organizationKeyListJoined count: "+organizationKeyListJoined.count());
-				
-		// Trigger the job execution and measure the exeuction time.
+
+        //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
+        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples).where(0).equalTo(0);
+
+        System.out.println("organizationKeyListJoined count: "+organizationKeyListJoined.count());
+
+        //Search the sentences for raw patterns
+        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags));
+
+        System.out.println("Raw patterns count: "+rawPatterns.count());
+        rawPatterns.print();
+
+		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
         try {
-            env.execute("SINDY");
+            env.execute("Snowball");
         } finally {
             RemoteCollectorImpl.shutdownAll();
         }
 		long endTime = System.currentTimeMillis();
-		System.out.format("Exection finished after %.3f s.\n", (endTime - startTime) / 1000d);
+		System.out.format("Execution finished after %.3f s.\n", (endTime - startTime) / 1000d);
 	}
 
 	private void collectAndPrintInds(DataSet<Tuple2<Integer, int[]>> indSets) {
@@ -105,6 +120,71 @@ public class App {
 			}
 		});
 	}
+
+    public static List<scala.Tuple2> generateTokenList(String sentence) {
+        //Create regex pattern that finds NER XML tags in the sentence (e.g. "<LOCATION>New York</LOCATION>")
+        Pattern NERTagPattern = Pattern.compile("<([A-Z]+)>(.+?)</([A-Z]+)>");
+        Matcher NERMatcher = NERTagPattern.matcher(sentence);
+
+        //Store all tokens in a list of 2-tuples <string, NER tag>
+        List<scala.Tuple2> tokenList = new ArrayList();
+        Integer lastIndex = 0;
+        //Iterate through all occurences of the regex pattern
+        while (NERMatcher.find()) {
+            //First, add the normal words (i.e. w/o NER tags) to the token list
+            //Add them as 2-tuples <string, "">
+            String stringBefore = sentence.substring(lastIndex, NERMatcher.start());
+            String[] splittedStringBefore = stringBefore.split(" ");
+            for (String word : splittedStringBefore) {
+                if (!word.isEmpty()) {
+                    tokenList.add(new scala.Tuple2(word, ""));
+                }
+            }
+
+            //Then, add the NER-tagged tokens to the token list
+            //Add them as 2 tuples <string, NER tag>
+            tokenList.add(new scala.Tuple2(NERMatcher.group(2), NERMatcher.group(1)));
+
+            //Remember last processed character
+            lastIndex = NERMatcher.end();
+        }
+        //Lastly, add the normal words (i.e. w/o NER tags) after the last NER tag
+        //Add them as 2-tuples <string, "">
+        String endString = sentence.substring(lastIndex, sentence.length());
+        String[] splittedEndString = endString.split(" ");
+        for (String word : splittedEndString) {
+            if (!word.isEmpty()) {
+                tokenList.add(new scala.Tuple2(word, ""));
+            }
+        }
+        return tokenList;
+    }
+
+    public static Map produceContext(List<scala.Tuple2> tokenList) {
+        /*
+           Produce the context based on a given token list. A context is a HashMap that maps each token in the token
+           list to a weight. The more prominent or frequent a token is, the higher is the associated weight.
+         */
+        Map<String, Integer> termCounts = new LinkedHashMap();
+
+        //Count how often each token occurs
+        Integer sumCounts = 0;
+        for (scala.Tuple2<String, String> token : tokenList) {
+            if (!termCounts.containsKey(token._1())) {
+                termCounts.put(token._1(), 1);
+            } else {
+                termCounts.put(token._1(), termCounts.get(token._1()) + 1);
+            }
+            sumCounts += 1;
+        }
+
+        //Calculate token frequencies out of the counts
+        Map<String, Float> context = new LinkedHashMap();
+        for (Map.Entry<String, Integer> entry : termCounts.entrySet()) {
+            context.put(entry.getKey(), (float) entry.getValue() / sumCounts);
+        }
+        return context;
+    }
 
 	/** Converts an attribute index into the form file[index]. */
 	private String makeAttributeIndexHumanReadable(int attributeIndex) {
@@ -132,7 +212,7 @@ public class App {
 			executionEnvironment = ExecutionEnvironment.createRemoteEnvironment(host, port, jars);
 
 		} else {
-            // Otherwise, create a default exection environment.
+            // Otherwise, create a default execution environment.
             executionEnvironment = ExecutionEnvironment.getExecutionEnvironment();
         }
 
@@ -188,7 +268,7 @@ public class App {
 	}
 
 	/**
-	 * Parameters for SINDY.
+	 * Parameters for Snowball.
 	 */
 	private static class Parameters {
 

@@ -14,9 +14,6 @@ import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.io.RemoteCollectorConsumer;
 import org.apache.flink.api.java.io.RemoteCollectorImpl;
 import org.apache.flink.api.java.operators.DataSource;
-import org.apache.flink.api.java.operators.JoinOperator.DefaultJoin;
-import org.apache.flink.api.java.operators.JoinOperator.JoinOperatorSets;
-import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
@@ -24,8 +21,6 @@ import org.apache.flink.core.fs.Path;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /** Implementation of the SINDY algorithm for scalable IND discovery. */
 public class App {
@@ -124,9 +119,19 @@ public class App {
 	    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
 	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegments.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold, patterns));
 	    
-	    //Join location from seed tuples onto the matched locations: <organization, <<pattern_id, matched_location>, seedtuple_location>>
+	    //Join location from seed tuples onto the matched locations: <<organization, <pattern_id, matched_location>>, <organization, seedtuple_location>>
         DataSet<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations.join(seedTuples).where(0).equalTo(0);
-        
+
+        //Return counts of positives and negatives depending on whether matched location equals seed tuple location: <pattern_id, <#positives, #negatives>>
+        DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithPositiveAndNegatives = organizationsWithMatchedAndCorrectLocation.map(new MapPositivesAndNegatives());
+
+        //Sum up counts of positives and negatives for each pattern id: <pattern_id, <#positives, #negatives>>
+        DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithSummedUpPositiveAndNegatives = patternsWithPositiveAndNegatives.groupBy(0).reduce(new ReducePositivesAndNegatives());
+
+        //Calculate pattern confidence: <pattern_id, confidence>
+        DataSet<Tuple2<Integer, Float>> patternConfidences = patternsWithSummedUpPositiveAndNegatives.map(new CalculatePatternConfidences());
+
+        patternConfidences.print();
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
         try {

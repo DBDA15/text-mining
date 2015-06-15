@@ -38,4 +38,9 @@ public class DegreeOfMatchCalculator {
             return 0.0f;
         }
     }
+    
+    public static Float calculateDegreeOfMatchWithCluster(TupleContext pattern, List<TupleContext> cluster) {
+        TupleContext centroid = CentroidCalculator.calculateCentroid(cluster);
+        return DegreeOfMatchCalculator.calculateDegreeOfMatch(pattern, centroid);
+    }
 }

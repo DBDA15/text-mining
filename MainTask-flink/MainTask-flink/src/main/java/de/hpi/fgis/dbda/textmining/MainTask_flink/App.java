@@ -130,6 +130,10 @@ public class App {
 
         //Calculate pattern confidence: <pattern_id, confidence>
         DataSet<Tuple2<Integer, Float>> patternConfidences = patternsWithSummedUpPositiveAndNegatives.map(new CalculatePatternConfidences());
+        
+        //Compile candidate tuple list: <pattern, <candidate tuple, similarity>>
+        DataSet<Tuple2<Integer, Tuple2<Tuple2, Float>>> patternsWithTuples = textSegments.flatMap(new CalculateBestPatternSimilarity(parameters.degreeOfMatchThreshold, patterns));
+
 
         patternConfidences.print();
 		// Trigger the job execution and measure the execution time.

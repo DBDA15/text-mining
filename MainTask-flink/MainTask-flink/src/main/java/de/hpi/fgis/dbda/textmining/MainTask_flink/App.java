@@ -172,18 +172,6 @@ public class App {
 		System.out.format("Execution finished after %.3f s.\n", (endTime - startTime) / 1000d);
 	}
 
-	private void collectAndPrintInds(DataSet<Tuple2<Integer, int[]>> indSets) {
-		RemoteCollectorImpl.collectLocal(indSets, new RemoteCollectorConsumer<Tuple2<Integer, int[]>>() {
-			@Override
-			public void collect(Tuple2<Integer, int[]> indSet) {
-				for (int referencedAttributeIndex : indSet.f1) {
-					System.out.format("%s < %s\n", makeAttributeIndexHumanReadable(indSet.f0),
-							makeAttributeIndexHumanReadable(referencedAttributeIndex));
-				}
-			}
-		});
-	}
-
     private static float sumCollection(Collection<Float> col) {
         float sum = 0.0f;
         for (float o : col) {
@@ -273,13 +261,6 @@ public class App {
         }
         return clusters;
     }
-
-	/** Converts an attribute index into the form file[index]. */
-	private String makeAttributeIndexHumanReadable(int attributeIndex) {
-		int fileLocalIndex = attributeIndex % ATTRIBUTE_INDEX_OFFSET;
-		int fileAttributeIndex = attributeIndex - fileLocalIndex;
-		return String.format("%s[%d]", this.filesByAttributeIndexOffset.get(fileAttributeIndex), fileLocalIndex);
-	}
 
 	/**
 	 * Creates a execution environment as specified by the parameters.

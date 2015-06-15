@@ -156,6 +156,11 @@ public class App {
         //Filter candidate tuples by organization, choosing highest confidence: <organization, <location, tuple confidence>>
         DataSet<Tuple2<String, Tuple2<String, Float>>> uniqueFilteredTuples = filteredTuples.groupBy(0).reduceGroup(new UniqueOrganizationReducer());
         
+        //Store new seed tuples without their confidence: <organization, location>
+        DataSet<Tuple2<String, String>> newSeedTuples = uniqueFilteredTuples.map(new SeedTuplesExtractor());
+        
+        seedTuples = seedTuples.union(newSeedTuples);
+        
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
         try {

@@ -5,10 +5,10 @@ import org.apache.flink.api.java.tuple.Tuple2;
 
 public class CandidateTupleSimplifier
 		implements
-		MapFunction<Tuple2<Tuple2<Integer, Tuple2<Tuple2, Float>>, Tuple2<Integer, Float>>, Tuple2<Tuple2, Tuple2<Float, Float>>> {
+		MapFunction<Tuple2<Tuple2<Integer, Tuple2<Tuple2<String, String>, Float>>, Tuple2<Integer, Float>>, Tuple2<Tuple2<String, String>, Tuple2<Float, Float>>> {
 
 	@Override
-	public Tuple2<Tuple2, Tuple2<Float, Float>> map(Tuple2<Tuple2<Integer, Tuple2<Tuple2, Float>>, Tuple2<Integer, Float>> arg0) throws Exception {
+	public Tuple2<Tuple2<String, String>, Tuple2<Float, Float>> map(Tuple2<Tuple2<Integer, Tuple2<Tuple2<String, String>, Float>>, Tuple2<Integer, Float>> arg0) throws Exception {
         Tuple2 candidateTuple = arg0.f0.f1.f0;
         Float patternConf = arg0.f1.f1;
         Float similarity = arg0.f0.f1.f1;

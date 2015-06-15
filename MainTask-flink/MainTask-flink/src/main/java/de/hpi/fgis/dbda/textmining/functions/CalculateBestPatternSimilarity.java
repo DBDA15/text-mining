@@ -10,7 +10,7 @@ import org.apache.flink.util.Collector;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.DegreeOfMatchCalculator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
 
-public class CalculateBestPatternSimilarity implements FlatMapFunction<Tuple2<Tuple2<String, String>, TupleContext>, Tuple2<Integer, Tuple2<Tuple2, Float>>> {
+public class CalculateBestPatternSimilarity implements FlatMapFunction<Tuple2<Tuple2<String, String>, TupleContext>, Tuple2<Integer, Tuple2<Tuple2<String, String>, Float>>> {
 
 	private float degreeOfMatchThreshold;
 	private List<TupleContext> patterns;
@@ -22,12 +22,12 @@ public class CalculateBestPatternSimilarity implements FlatMapFunction<Tuple2<Tu
 	}
 
 	@Override
-	public void flatMap(Tuple2<Tuple2<String, String>, TupleContext> arg0, Collector<Tuple2<Integer, Tuple2<Tuple2, Float>>> arg1)
+	public void flatMap(Tuple2<Tuple2<String, String>, TupleContext> arg0, Collector<Tuple2<Integer, Tuple2<Tuple2<String, String>, Float>>> arg1)
 		throws Exception {
 
         //Algorithm from figure 4
         //
-        List<Tuple2<Integer, Tuple2<Tuple2, Float>>> candidateTuplesWithPatternAndSimilarity = new ArrayList();
+        List<Tuple2<Integer, Tuple2<Tuple2<String, String>, Float>>> candidateTuplesWithPatternAndSimilarity = new ArrayList();
 
         Tuple2<String, String> candidateTuple = arg0.f0;
         TupleContext tupleContext = arg0.f1;
@@ -50,7 +50,7 @@ public class CalculateBestPatternSimilarity implements FlatMapFunction<Tuple2<Tu
         	candidateTuplesWithPatternAndSimilarity.add(new Tuple2(bestPattern, new Tuple2(candidateTuple, bestSimilarity)));
         }
                 
-		for (Tuple2<Integer, Tuple2<Tuple2, Float>> tuple : candidateTuplesWithPatternAndSimilarity) {
+		for (Tuple2<Integer, Tuple2<Tuple2<String, String>, Float>> tuple : candidateTuplesWithPatternAndSimilarity) {
 			arg1.collect(tuple);
         }
     }

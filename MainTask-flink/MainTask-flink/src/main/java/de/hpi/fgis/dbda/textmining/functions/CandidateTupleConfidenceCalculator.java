@@ -4,7 +4,7 @@ import org.apache.flink.api.common.functions.GroupReduceFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.util.Collector;
 
-public class ConfidenceSubtrahendGroupReducer implements GroupReduceFunction<Tuple2<Tuple2<String, String>, Tuple2<Float, Float>>, Tuple2<Tuple2<String, String>, Float>> {
+public class CandidateTupleConfidenceCalculator implements GroupReduceFunction<Tuple2<Tuple2<String, String>, Tuple2<Float, Float>>, Tuple2<Tuple2<String, String>, Float>> {
 
 	@Override
 	public void reduce(Iterable<Tuple2<Tuple2<String, String>, Tuple2<Float, Float>>> arg0,

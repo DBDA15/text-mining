@@ -143,9 +143,14 @@ public class App {
         System.out.println("candidateTuples size: " + candidateTuples.count());
         
         //Execute first step of tuple confidence calculation
-        DataSet<Tuple2<Tuple2<String, String>, Float>> confidenceSubtrahend = candidateTuples.groupBy(0).reduceGroup(new ConfidenceSubtrahendGroupReducer());
+        DataSet<Tuple2<Tuple2<String, String>, Float>> candidateTupleConfidences = candidateTuples.groupBy(0).reduceGroup(new CandidateTupleConfidenceCalculator());
         
-        System.out.println("confidenceSubtrahend size: " + confidenceSubtrahend.count());
+        System.out.println("confidenceSubtrahend size: " + candidateTupleConfidences.count());
+        
+        //Finish tuple confidence calculation, with organization as key: <organization, <location, tuple confidence>>
+        DataSet<Tuple2<String, Tuple2<String, Float>>> confidencesWithOrganizationAsKey = candidateTupleConfidences.map(new CandidateTupleConfidenceReorganizer());
+        
+        confidencesWithOrganizationAsKey.print();
         
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();

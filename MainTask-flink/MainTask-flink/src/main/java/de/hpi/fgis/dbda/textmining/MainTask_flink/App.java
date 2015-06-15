@@ -68,29 +68,21 @@ public class App {
 			}
 
 		}
-		
-		System.out.println("allLines count: " + allLines.count());
 
         //Filter sentences: retain only those that contain both entity tags
-		DataSet<String> sentencesWithTags = allLines.filter(new FilterByTags(task_entityTags));
+		DataSet<String> sentencesWithTags = allLines.filter(new FilterByTags(task_entityTags)).name("Filtering out lines by NER tags");
 
         //Generate a mapping <organization, sentence>
-		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples());
-
-		System.out.println("organizationSentenceTuples count: "+organizationSentenceTuples.count());
+		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples()).name("Extracting Orgainization Sentence Tuples");
 
         //Read the seed tuples as pairs: <organization, location>
-		DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
+		DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings()).name("Reading in Seed Tuples");;
 
         //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
-        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples).where(0).equalTo(0);
-
-        System.out.println("organizationKeyListJoined count: "+organizationKeyListJoined.count());
+        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
 
         //Search the sentences for raw patterns
-        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags));
-
-        System.out.println("Raw patterns count: "+rawPatterns.count());
+        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
 
         //TODO: Distribute clustering
         //Collect all raw patterns on the driver
@@ -98,8 +90,6 @@ public class App {
 
         //Cluster patterns with a single-pass clustering algorithm
         List<List> clusters = clusterPatterns(patternList, parameters.similarityThreshold);
-
-        System.out.println("Cluster size: " + clusters.size());
 
         //Remove clusters with less than 5 patterns?!
         final List<TupleContext> patterns = new ArrayList();
@@ -109,57 +99,48 @@ public class App {
                 patterns.add(centroid);
             }
         }
-
-        System.out.println("Patterns size: " + patterns.size());
         
 	    //Search sentences for occurrences of the two entity tags
 	    //Returns: List of <tuple, context>
-	    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize));
+	    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
 	    
 	    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
-	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegments.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold, patterns));
+	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegments.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold, patterns)).name("Find patterns that generated those tuples");
 	    
 	    //Join location from seed tuples onto the matched locations: <<organization, <pattern_id, matched_location>>, <organization, seedtuple_location>>
-        DataSet<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations.join(seedTuples).where(0).equalTo(0);
+        DataSet<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations.join(seedTuples).where(0).equalTo(0).name("Join location from seed tuples onto candidate tuples");
 
         //Return counts of positives and negatives depending on whether matched location equals seed tuple location: <pattern_id, <#positives, #negatives>>
-        DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithPositiveAndNegatives = organizationsWithMatchedAndCorrectLocation.map(new MapPositivesAndNegatives());
+        DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithPositiveAndNegatives = organizationsWithMatchedAndCorrectLocation.map(new MapPositivesAndNegatives()).name("Return counts of positives and negatives depending on whether matched location equals seed tuple location");
 
         //Sum up counts of positives and negatives for each pattern id: <pattern_id, <#positives, #negatives>>
-        DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithSummedUpPositiveAndNegatives = patternsWithPositiveAndNegatives.groupBy(0).reduce(new ReducePositivesAndNegatives());
+        DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithSummedUpPositiveAndNegatives = patternsWithPositiveAndNegatives.groupBy(0).reduce(new ReducePositivesAndNegatives()).name("Sum up counts of positives and negatives for each pattern id");
 
         //Calculate pattern confidence: <pattern_id, confidence>
-        DataSet<Tuple2<Integer, Float>> patternConfidences = patternsWithSummedUpPositiveAndNegatives.map(new CalculatePatternConfidences());
+        DataSet<Tuple2<Integer, Float>> patternConfidences = patternsWithSummedUpPositiveAndNegatives.map(new CalculatePatternConfidences()).name("Calculate pattern confidence");
         
         //Compile candidate tuple list: <pattern, <candidate tuple, similarity>>
-        DataSet<Tuple2<Integer, Tuple2<Tuple2<String, String>, Float>>> patternsWithTuples = textSegments.flatMap(new CalculateBestPatternSimilarity(parameters.degreeOfMatchThreshold, patterns));
+        DataSet<Tuple2<Integer, Tuple2<Tuple2<String, String>, Float>>> patternsWithTuples = textSegments.flatMap(new CalculateBestPatternSimilarity(parameters.degreeOfMatchThreshold, patterns)).name("Calculate the similarity of the best pattern for each candidate tuple");
         
         //Join candidate tuples with pattern confidences: <pattern_id, <<candidate tuple, similarity>, pattern_conf>>
-        DataSet<Tuple2<Tuple2<Integer,Tuple2<Tuple2<String, String>,Float>>,Tuple2<Integer,Float>>> candidateTuplesWithPatternConfidences = patternsWithTuples.join(patternConfidences).where(0).equalTo(0);
+        DataSet<Tuple2<Tuple2<Integer,Tuple2<Tuple2<String, String>,Float>>,Tuple2<Integer,Float>>> candidateTuplesWithPatternConfidences = patternsWithTuples.join(patternConfidences).where(0).equalTo(0).name("Join candidate tuples with pattern confidences");
 
         //Reformat to <candidate tuple, <pattern_conf, similarity>>
-        DataSet<Tuple2<Tuple2<String, String>, Tuple2<Float, Float>>> candidateTuples = candidateTuplesWithPatternConfidences.map(new CandidateTupleSimplifier());
-        
-        System.out.println("candidateTuples size: " + candidateTuples.count());
+        DataSet<Tuple2<Tuple2<String, String>, Tuple2<Float, Float>>> candidateTuples = candidateTuplesWithPatternConfidences.map(new CandidateTupleSimplifier()).name("Reformat to <candidate tuple, <pattern_conf, similarity>>");
         
         //Execute first step of tuple confidence calculation
-        DataSet<Tuple2<Tuple2<String, String>, Float>> candidateTupleConfidences = candidateTuples.groupBy(0).reduceGroup(new CandidateTupleConfidenceCalculator());
-        
-        System.out.println("confidenceSubtrahend size: " + candidateTupleConfidences.count());
-        
-        //Finish tuple confidence calculation, with organization as key: <organization, <location, tuple confidence>>
-        DataSet<Tuple2<String, Tuple2<String, Float>>> confidencesWithOrganizationAsKey = candidateTupleConfidences.map(new CandidateTupleConfidenceReorganizer());
+        DataSet<Tuple2<String, Tuple2<String, Float>>> candidateTupleconfidencesWithOrganizationAsKey = candidateTuples.groupBy(0).reduceGroup(new CandidateTupleConfidenceCalculator()).name("Calculate candidate tuple confidences and use organization as key");
         
         //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>
-        DataSet<Tuple2<String, Tuple2<String, Float>>> filteredTuples = confidencesWithOrganizationAsKey.filter(new CandidateTupleConfidenceFilter(parameters.tupleConfidenceThreshold));
+        DataSet<Tuple2<String, Tuple2<String, Float>>> filteredTuples = candidateTupleconfidencesWithOrganizationAsKey.filter(new CandidateTupleConfidenceFilter(parameters.tupleConfidenceThreshold)).name("Filter candidate tuples by their confidence");
         
         //Filter candidate tuples by organization, choosing highest confidence: <organization, <location, tuple confidence>>
-        DataSet<Tuple2<String, Tuple2<String, Float>>> uniqueFilteredTuples = filteredTuples.groupBy(0).reduceGroup(new UniqueOrganizationReducer());
+        DataSet<Tuple2<String, Tuple2<String, Float>>> uniqueFilteredTuples = filteredTuples.groupBy(0).reduceGroup(new UniqueOrganizationReducer()).name("Choose unique location for each organization based on highest confidence");
         
         //Store new seed tuples without their confidence: <organization, location>
-        DataSet<Tuple2<String, String>> newSeedTuples = uniqueFilteredTuples.map(new SeedTuplesExtractor());
+        DataSet<Tuple2<String, String>> newSeedTuples = uniqueFilteredTuples.map(new SeedTuplesExtractor()).name("Store new seed tuples without their confidence");
         
-        seedTuples = seedTuples.union(newSeedTuples);
+        seedTuples = seedTuples.union(newSeedTuples).name("Merge new seed tuples into seed tuples");
         
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();

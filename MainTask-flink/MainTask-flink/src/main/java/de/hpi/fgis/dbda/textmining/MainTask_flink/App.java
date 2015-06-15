@@ -150,7 +150,8 @@ public class App {
         //Finish tuple confidence calculation, with organization as key: <organization, <location, tuple confidence>>
         DataSet<Tuple2<String, Tuple2<String, Float>>> confidencesWithOrganizationAsKey = candidateTupleConfidences.map(new CandidateTupleConfidenceReorganizer());
         
-        confidencesWithOrganizationAsKey.print();
+        //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>
+        DataSet<Tuple2<String, Tuple2<String, Float>>> filteredTuples = confidencesWithOrganizationAsKey.filter(new CandidateTupleConfidenceFilter(parameters.tupleConfidenceThreshold));
         
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();

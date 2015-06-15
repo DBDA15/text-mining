@@ -133,7 +133,12 @@ public class App {
         
         //Compile candidate tuple list: <pattern, <candidate tuple, similarity>>
         DataSet<Tuple2<Integer, Tuple2<Tuple2, Float>>> patternsWithTuples = textSegments.flatMap(new CalculateBestPatternSimilarity(parameters.degreeOfMatchThreshold, patterns));
+        
+        //Join candidate tuples with pattern confidences: <pattern_id, <<candidate tuple, similarity>, pattern_conf>>
+        DataSet<Tuple2<Tuple2<Integer,Tuple2<Tuple2,Float>>,Tuple2<Integer,Float>>> candidateTuplesWithPatternConfidences = patternsWithTuples.join(patternConfidences).where(0).equalTo(0);
 
+        //Reformat to <candidate tuple, <pattern_conf, similarity>>
+        DataSet<Tuple2<Tuple2, Tuple2<Float, Float>>> candidateTuples = candidateTuplesWithPatternConfidences.map(new CandidateTupleSimplifier());
 
         patternConfidences.print();
 		// Trigger the job execution and measure the execution time.

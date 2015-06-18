@@ -9,14 +9,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.io.RemoteCollectorImpl;
 import org.apache.flink.api.java.operators.DataSource;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.FileSystem.WriteMode;
@@ -102,13 +100,13 @@ public class App {
         DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
 
         //Search the sentences for raw patterns
-        DataSet<Tuple5<Map, String, Map, String, Map>> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
+        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
         
         System.out.println("rawPatterns count: " + rawPatterns.count());
 
         //TODO: Distribute clustering
         //Collect all raw patterns on the driver
-        List<Tuple5<Map, String, Map, String, Map>> patternList = rawPatterns.collect();
+        List<TupleContext> patternList = rawPatterns.collect();
 
         System.out.println("Pattern List size: " + patternList.size());
 
@@ -116,18 +114,18 @@ public class App {
         List<List> clusters = clusterPatterns(patternList, parameters.similarityThreshold);
 
         //Remove clusters with less than 5 patterns?!
-        final List<Tuple5<Map, String, Map, String, Map>> patterns = new ArrayList();
-        for (List<Tuple5<Map, String, Map, String, Map>> l : clusters) {
+        final List<TupleContext> patterns = new ArrayList();
+        for (List<TupleContext> l : clusters) {
             //TODO: dynamic cluster size threshold
             if (l.size() >= parameters.minimalClusterSize) {
-                Tuple5<Map, String, Map, String, Map> centroid = CentroidCalculator.calculateCentroid(l);
+                TupleContext centroid = CentroidCalculator.calculateCentroid(l);
                 patterns.add(centroid);
             }
         }
 
 	    //Search sentences for occurrences of the two entity tags
 	    //Returns: List of <tuple, context>
-	    DataSet<Tuple2<Tuple2<String, String>, Tuple5<Map, String, Map, String, Map>>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
+	    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
 
 	    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
 	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegments.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold, patterns)).name("Find patterns that generated those tuples");
@@ -181,18 +179,18 @@ public class App {
 	}
 
 
-    private static List<List> clusterPatterns(List<Tuple5<Map, String, Map, String, Map>> patternList, float similarityThreshold) {
+    private static List<List> clusterPatterns(List<TupleContext> patternList, float similarityThreshold) {
         List<List> clusters = new ArrayList<>();
-        for (Tuple5<Map, String, Map, String, Map> pattern : patternList) {
+        for (TupleContext pattern : patternList) {
             if (clusters.isEmpty()) {
-                List<Tuple5<Map, String, Map, String, Map>> newCluster = new ArrayList<>();
+                List<TupleContext> newCluster = new ArrayList<>();
                 newCluster.add(pattern);
                 clusters.add(newCluster);
             } else {
                 Integer clusterIndex = 0;
                 Integer nearestCluster = null;
                 Float greatestSimilarity = 0.0f;
-                for (List<Tuple5<Map, String, Map, String, Map>> cluster : clusters) {
+                for (List<TupleContext> cluster : clusters) {
                     Float similarity = DegreeOfMatchCalculator.calculateDegreeOfMatchWithCluster(pattern, cluster);
                     if (similarity > greatestSimilarity) {
                         nearestCluster = clusterIndex;
@@ -204,7 +202,7 @@ public class App {
                 if (greatestSimilarity > similarityThreshold) {
                     clusters.get(nearestCluster).add(pattern);
                 } else {
-                    List<Tuple5<Map, String, Map, String, Map>> separateCluster = new ArrayList<>();
+                    List<TupleContext> separateCluster = new ArrayList<>();
                     separateCluster.add(pattern);
                     clusters.add(separateCluster);
                 }

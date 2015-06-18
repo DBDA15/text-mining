@@ -3,11 +3,9 @@ package de.hpi.fgis.dbda.textmining.MainTask_flink;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.flink.api.java.tuple.Tuple5;
-
 public class DegreeOfMatchCalculator {
 
-    public static Float calculateDegreeOfMatch(Tuple5<Map, String, Map, String, Map> pattern, Tuple5<Map, String, Map, String, Map> tuple) {
+    public static Float calculateDegreeOfMatch(TupleContext pattern, TupleContext tuple) {
         Map<String, Float> centroidLeft = tuple.f0;
         Map<String, Float> centroidMiddle = tuple.f2;
         Map<String, Float> centroidRight = tuple.f4;
@@ -43,8 +41,8 @@ public class DegreeOfMatchCalculator {
         }
     }
     
-    public static Float calculateDegreeOfMatchWithCluster(Tuple5<Map, String, Map, String, Map> pattern, List<Tuple5<Map, String, Map, String, Map>> cluster) {
-        Tuple5<Map, String, Map, String, Map> centroid = CentroidCalculator.calculateCentroid(cluster);
+    public static Float calculateDegreeOfMatchWithCluster(TupleContext pattern, List<TupleContext> cluster) {
+        TupleContext centroid = CentroidCalculator.calculateCentroid(cluster);
         return DegreeOfMatchCalculator.calculateDegreeOfMatch(pattern, centroid);
     }
 }

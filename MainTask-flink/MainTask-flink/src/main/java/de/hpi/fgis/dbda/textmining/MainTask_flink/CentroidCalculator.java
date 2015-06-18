@@ -9,7 +9,7 @@ import org.apache.flink.api.java.tuple.Tuple5;
 
 public class CentroidCalculator {
 
-    public static Tuple5<Map, String, Map, String, Map> calculateCentroid(List<Tuple5<Map, String, Map, String, Map>> patterns) {
+    public static TupleContext calculateCentroid(List<TupleContext> patterns) {
         Map<String, Float> leftCounter = new LinkedHashMap();
         Map<String, Float>  middleCounter = new LinkedHashMap();
         Map<String, Float>  rightCounter = new LinkedHashMap();
@@ -18,7 +18,7 @@ public class CentroidCalculator {
         String rightEntity = patterns.get(0).f3;
 
         //Add up all contexts
-        for (Tuple5<Map, String, Map, String, Map> pattern : patterns) {
+        for (TupleContext pattern : patterns) {
             leftCounter = sumMaps(leftCounter, pattern.f0);
             middleCounter = sumMaps(middleCounter, pattern.f2);
             rightCounter = sumMaps(rightCounter, pattern.f4);
@@ -39,7 +39,7 @@ public class CentroidCalculator {
             rightCounter.put(key, rightCounter.get(key) / rightSum);
         }
 
-        return new Tuple5<Map, String, Map, String, Map>(leftCounter, leftEntity, middleCounter, rightEntity, rightCounter);
+        return new TupleContext(leftCounter, leftEntity, middleCounter, rightEntity, rightCounter);
     }
 
 	 private static float sumCollection(Collection<Float> col) {

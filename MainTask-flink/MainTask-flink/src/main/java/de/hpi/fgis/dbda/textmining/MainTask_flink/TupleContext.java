@@ -1,8 +1,8 @@
 package de.hpi.fgis.dbda.textmining.MainTask_flink;
 
-import scala.Tuple5;
-
 import java.util.Map;
+
+import org.apache.flink.api.java.tuple.Tuple5;
 
 public class TupleContext extends Tuple5<Map, String, Map, String, Map> {
 

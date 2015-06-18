@@ -12,14 +12,14 @@ public class CentroidCalculator {
         Map<String, Float>  middleCounter = new LinkedHashMap();
         Map<String, Float>  rightCounter = new LinkedHashMap();
 
-        String leftEntity = patterns.get(0)._2();
-        String rightEntity = patterns.get(0)._4();
+        String leftEntity = patterns.get(0).f1;
+        String rightEntity = patterns.get(0).f3;
 
         //Add up all contexts
         for (TupleContext pattern : patterns) {
-            leftCounter = sumMaps(leftCounter, pattern._1());
-            middleCounter = sumMaps(middleCounter, pattern._3());
-            rightCounter = sumMaps(rightCounter, pattern._5());
+            leftCounter = sumMaps(leftCounter, pattern.f0);
+            middleCounter = sumMaps(middleCounter, pattern.f2);
+            rightCounter = sumMaps(rightCounter, pattern.f4);
         }
 
         //Normalize counters

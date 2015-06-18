@@ -84,10 +84,14 @@ public class App {
         //Search the sentences for raw patterns
         DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
 
+        rawPatterns.print();
+        
         //TODO: Distribute clustering
         //Collect all raw patterns on the driver
         List<TupleContext> patternList = rawPatterns.collect();
 
+        System.out.println("Pattern List size: " + patternList.size());
+        
         //Cluster patterns with a single-pass clustering algorithm
         List<List> clusters = clusterPatterns(patternList, parameters.similarityThreshold);
 

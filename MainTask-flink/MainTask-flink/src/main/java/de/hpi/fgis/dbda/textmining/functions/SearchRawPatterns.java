@@ -8,7 +8,6 @@ import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.util.Collector;
 
-import de.hpi.fgis.dbda.textmining.MainTask_flink.App;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.ContextProducer;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.TokenListGenerator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
@@ -73,7 +72,7 @@ public class SearchRawPatterns implements FlatMapFunction<Tuple2<Tuple2<String, 
 					Map beforeContext = ContextProducer.produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
 					Map betweenContext = ContextProducer.produceContext(tokenList.subList(entity1site + 1, entity0site));
 					Map afterContext = ContextProducer.produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
-					TupleContext pattern = new TupleContext(beforeContext, this.entities.get(1), betweenContext, this.entities.get(0), afterContext);
+					TupleContext pattern = new TupleContext(beforeContext, this.entities.get(1), betweenContext,	 this.entities.get(0), afterContext);
                     results.collect(pattern);
 				}
 			}

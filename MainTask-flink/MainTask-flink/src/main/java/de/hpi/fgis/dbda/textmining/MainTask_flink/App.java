@@ -141,7 +141,9 @@ public class App {
         DataSet<Tuple2<String, String>> newSeedTuples = uniqueFilteredTuples.map(new SeedTuplesExtractor()).name("Store new seed tuples without their confidence");
         
         seedTuples = seedTuples.union(newSeedTuples).name("Merge new seed tuples into seed tuples");
-        
+
+		seedTuples.writeAsText("results/seedTuples.txt");
+
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
         try {

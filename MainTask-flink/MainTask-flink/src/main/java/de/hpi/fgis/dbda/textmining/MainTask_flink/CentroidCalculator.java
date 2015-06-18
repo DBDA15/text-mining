@@ -41,23 +41,23 @@ public class CentroidCalculator {
     }
 
 	 private static float sumCollection(Collection<Float> col) {
-	        float sum = 0.0f;
-	        for (float o : col) {
-	            sum += o;
-	        }
-	        return sum;
-	    }
-
-	    private static Map sumMaps(Map<String, Float> map1, Map<String, Float> map2) {
-	        //Add all values of map2 to map1
-	        for (Map.Entry<String, Float> entry : map2.entrySet()) {
-	            if (map1.containsKey(entry.getKey())) {
-	                map1.put(entry.getKey(), map1.get(entry.getKey()) + entry.getValue());
-	            } else {
-	                map1.put(entry.getKey(), entry.getValue());
-	            }
-	        }
-	        return map1;
-	    }
+		 float sum = 0.0f;
+	     for (float o : col) {
+	    	 sum += o;
+	     }
+	     return sum;
+	 }
+	 
+	 private static Map<String, Float> sumMaps(Map<String, Float> map1, Map<String, Float> map2) {
+		 //Add all values of map2 to map1
+	     for (Map.Entry<String, Float> entry : map2.entrySet()) {
+	    	 if (map1.containsKey(entry.getKey())) {
+	    		 map1.put(entry.getKey(), map1.get(entry.getKey()) + entry.getValue());
+	    	 } else {
+	    		 map1.put(entry.getKey(), entry.getValue());
+	    	 }
+	     }
+	     return map1;
+	 }
 	
 }

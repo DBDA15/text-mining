@@ -5,10 +5,10 @@ import org.apache.flink.api.java.tuple.Tuple2;
 
 public class SeedTuplesExtractor
 		implements
-		MapFunction<Tuple2<String, Tuple2<String, Float>>, Tuple2<String, String>> {
+		MapFunction<Tuple2<String, Tuple2<String, Double>>, Tuple2<String, String>> {
 
 	@Override
-	public Tuple2<String, String> map(Tuple2<String, Tuple2<String, Float>> arg0)
+	public Tuple2<String, String> map(Tuple2<String, Tuple2<String, Double>> arg0)
 			throws Exception {
                 String organization = arg0.f0;
                 String location = arg0.f1.f0;

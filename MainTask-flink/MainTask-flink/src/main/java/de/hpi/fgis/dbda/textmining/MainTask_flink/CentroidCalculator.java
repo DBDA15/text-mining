@@ -10,9 +10,9 @@ import org.apache.flink.api.java.tuple.Tuple5;
 public class CentroidCalculator {
 
     public static TupleContext calculateCentroid(List<TupleContext> patterns) {
-        Map<String, Float> leftCounter = new LinkedHashMap();
-        Map<String, Float>  middleCounter = new LinkedHashMap();
-        Map<String, Float>  rightCounter = new LinkedHashMap();
+        Map<String, Double> leftCounter = new LinkedHashMap();
+        Map<String, Double>  middleCounter = new LinkedHashMap();
+        Map<String, Double>  rightCounter = new LinkedHashMap();
 
         String leftEntity = patterns.get(0).f1;
         String rightEntity = patterns.get(0).f3;
@@ -25,9 +25,9 @@ public class CentroidCalculator {
         }
 
         //Normalize counters
-        float leftSum = sumCollection(leftCounter.values());
-        float middleSum = sumCollection(middleCounter.values());
-        float rightSum = sumCollection(rightCounter.values());
+        double leftSum = sumCollection(leftCounter.values());
+        double middleSum = sumCollection(middleCounter.values());
+        double rightSum = sumCollection(rightCounter.values());
 
         for (String key : leftCounter.keySet()) {
             leftCounter.put(key, leftCounter.get(key) / leftSum);
@@ -42,17 +42,17 @@ public class CentroidCalculator {
         return new TupleContext(leftCounter, leftEntity, middleCounter, rightEntity, rightCounter);
     }
 
-	 private static float sumCollection(Collection<Float> col) {
-		 float sum = 0.0f;
-	     for (float o : col) {
+	 private static double sumCollection(Collection<Double> col) {
+		 double sum = 0.0;
+	     for (double o : col) {
 	    	 sum += o;
 	     }
 	     return sum;
 	 }
 	 
-	 private static Map<String, Float> sumMaps(Map<String, Float> map1, Map<String, Float> map2) {
+	 private static Map<String, Double> sumMaps(Map<String, Double> map1, Map<String, Double> map2) {
 		 //Add all values of map2 to map1
-	     for (Map.Entry<String, Float> entry : map2.entrySet()) {
+	     for (Map.Entry<String, Double> entry : map2.entrySet()) {
 	    	 if (map1.containsKey(entry.getKey())) {
 	    		 map1.put(entry.getKey(), map1.get(entry.getKey()) + entry.getValue());
 	    	 } else {

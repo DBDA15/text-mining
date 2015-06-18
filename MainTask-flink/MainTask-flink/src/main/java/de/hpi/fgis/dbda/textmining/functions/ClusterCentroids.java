@@ -9,17 +9,19 @@ import org.apache.flink.util.Collector;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ClusterCentroids implements org.apache.flink.api.common.functions.MapPartitionFunction<Tuple2<TupleContext, Integer>, Tuple2<TupleContext, Integer>> {
+public class ClusterCentroids implements org.apache.flink.api.common.functions.MapPartitionFunction<Tuple2<TupleContext, Integer>, TupleContext> {
 
-    private float similarityThreshold;
+    private double similarityThreshold;
+    private int minimalClusterSize;
 
-    public ClusterCentroids(float similarityThreshold) {
+    public ClusterCentroids(double similarityThreshold, int minimalClusterSize) {
         super();
         this.similarityThreshold = similarityThreshold;
+        this.minimalClusterSize = minimalClusterSize;
     }
 
     @Override
-    public void mapPartition(Iterable<Tuple2<TupleContext, Integer>> centroids, Collector<Tuple2<TupleContext, Integer>> collector) throws Exception {
+    public void mapPartition(Iterable<Tuple2<TupleContext, Integer>> centroids, Collector<TupleContext> collector) throws Exception {
         List<Tuple2<List, Integer>> clusters = new ArrayList<>();
         for (Tuple2<TupleContext, Integer> centroidWithSize : centroids) {
             TupleContext centroid = centroidWithSize.f0;
@@ -31,10 +33,10 @@ public class ClusterCentroids implements org.apache.flink.api.common.functions.M
             } else {
                 Integer clusterIndex = 0;
                 Integer nearestCluster = null;
-                Float greatestSimilarity = 0.0f;
+                Double greatestSimilarity = 0.0;
                 for (Tuple2<List, Integer> cluster : clusters) {
                     List<TupleContext> currentCentroidList = cluster.f0;
-                    Float similarity = DegreeOfMatchCalculator.calculateDegreeOfMatchWithCluster(centroid, currentCentroidList);
+                    Double similarity = DegreeOfMatchCalculator.calculateDegreeOfMatchWithCluster(centroid, currentCentroidList);
                     if (similarity > greatestSimilarity) {
                         nearestCluster = clusterIndex;
                         greatestSimilarity = similarity;
@@ -54,9 +56,9 @@ public class ClusterCentroids implements org.apache.flink.api.common.functions.M
         }
         for (Tuple2<List, Integer> cluster : clusters) {
             //TODO: dynamic cluster size threshold
-            if (cluster.f1 > 0) {
+            if (cluster.f1 > minimalClusterSize) {
                 TupleContext centroid = CentroidCalculator.calculateCentroid(cluster.f0);
-                collector.collect(new Tuple2(centroid, cluster.f1));
+                collector.collect(centroid);
             }
         }
     }

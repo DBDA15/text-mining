@@ -15,9 +15,9 @@ import java.util.List;
  */
 public class ClusterPartition implements org.apache.flink.api.common.functions.MapPartitionFunction<TupleContext, Tuple2<TupleContext, Integer>> {
 
-    private float similarityThreshold;
+    private double similarityThreshold;
 
-    public ClusterPartition(float similarityThreshold) {
+    public ClusterPartition(double similarityThreshold) {
         super();
         this.similarityThreshold = similarityThreshold;
     }
@@ -33,9 +33,9 @@ public class ClusterPartition implements org.apache.flink.api.common.functions.M
             } else {
                 Integer clusterIndex = 0;
                 Integer nearestCluster = null;
-                Float greatestSimilarity = 0.0f;
+                Double greatestSimilarity = 0.0;
                 for (List<TupleContext> cluster : clusters) {
-                    Float similarity = DegreeOfMatchCalculator.calculateDegreeOfMatchWithCluster(pattern, cluster);
+                    Double similarity = DegreeOfMatchCalculator.calculateDegreeOfMatchWithCluster(pattern, cluster);
                     if (similarity > greatestSimilarity) {
                         nearestCluster = clusterIndex;
                         greatestSimilarity = similarity;

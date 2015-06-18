@@ -27,9 +27,9 @@ public class ContextProducer {
         }
 
         //Calculate token frequencies out of the counts
-        Map<String, Float> context = new LinkedHashMap();
+        Map<String, Double> context = new LinkedHashMap();
         for (Map.Entry<String, Integer> entry : termCounts.entrySet()) {
-            context.put(entry.getKey(), (float) entry.getValue() / sumCounts);
+            context.put(entry.getKey(), (double) entry.getValue() / sumCounts);
         }
         return context;
     }

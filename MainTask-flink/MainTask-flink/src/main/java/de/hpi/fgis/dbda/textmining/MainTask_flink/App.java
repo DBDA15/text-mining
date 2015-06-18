@@ -85,7 +85,7 @@ public class App {
         //Search the sentences for raw patterns
         DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
         
-        rawPatterns.print();
+        System.out.println("rawPatterns count: " + rawPatterns.count());
 
         //TODO: Distribute clustering
         //Collect all raw patterns on the driver

@@ -1,28 +1,46 @@
 package de.hpi.fgis.dbda.textmining.MainTask_flink;
 
 
-import com.beust.jcommander.JCommander;
-import com.beust.jcommander.Parameter;
-import com.beust.jcommander.ParameterException;
-
-import de.hpi.fgis.dbda.textmining.functions.*;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
-import org.apache.flink.api.java.io.RemoteCollectorConsumer;
 import org.apache.flink.api.java.io.RemoteCollectorImpl;
 import org.apache.flink.api.java.operators.DataSource;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.FileSystem.WriteMode;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.util.Collector;
 
-import java.io.IOException;
-import java.util.*;
+import com.beust.jcommander.JCommander;
+import com.beust.jcommander.Parameter;
+import com.beust.jcommander.ParameterException;
+
+import de.hpi.fgis.dbda.textmining.functions.CalculateBestPatternSimilarity;
+import de.hpi.fgis.dbda.textmining.functions.CalculatePatternConfidences;
+import de.hpi.fgis.dbda.textmining.functions.CandidateTupleConfidenceCalculator;
+import de.hpi.fgis.dbda.textmining.functions.CandidateTupleConfidenceFilter;
+import de.hpi.fgis.dbda.textmining.functions.CandidateTupleSimplifier;
+import de.hpi.fgis.dbda.textmining.functions.ExtractOrganizationSentenceTuples;
+import de.hpi.fgis.dbda.textmining.functions.FilterByTags;
+import de.hpi.fgis.dbda.textmining.functions.MapPositivesAndNegatives;
+import de.hpi.fgis.dbda.textmining.functions.MapSeedTuplesFromStrings;
+import de.hpi.fgis.dbda.textmining.functions.ReducePositivesAndNegatives;
+import de.hpi.fgis.dbda.textmining.functions.SearchForTagOccurences;
+import de.hpi.fgis.dbda.textmining.functions.SearchRawPatterns;
+import de.hpi.fgis.dbda.textmining.functions.SeedTuplesExtractor;
+import de.hpi.fgis.dbda.textmining.functions.TupleGenerationPatternsFinder;
+import de.hpi.fgis.dbda.textmining.functions.UniqueOrganizationReducer;
 
 /** Implementation of the SINDY algorithm for scalable IND discovery. */
 public class App {
@@ -84,13 +102,13 @@ public class App {
         DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
 
         //Search the sentences for raw patterns
-        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
+        DataSet<Tuple5<Map, String, Map, String, Map>> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
         
         System.out.println("rawPatterns count: " + rawPatterns.count());
 
         //TODO: Distribute clustering
         //Collect all raw patterns on the driver
-        List<TupleContext> patternList = rawPatterns.collect();
+        List<Tuple5<Map, String, Map, String, Map>> patternList = rawPatterns.collect();
 
         System.out.println("Pattern List size: " + patternList.size());
 
@@ -98,18 +116,18 @@ public class App {
         List<List> clusters = clusterPatterns(patternList, parameters.similarityThreshold);
 
         //Remove clusters with less than 5 patterns?!
-        final List<TupleContext> patterns = new ArrayList();
-        for (List<TupleContext> l : clusters) {
+        final List<Tuple5<Map, String, Map, String, Map>> patterns = new ArrayList();
+        for (List<Tuple5<Map, String, Map, String, Map>> l : clusters) {
             //TODO: dynamic cluster size threshold
             if (l.size() >= parameters.minimalClusterSize) {
-                TupleContext centroid = CentroidCalculator.calculateCentroid(l);
+                Tuple5<Map, String, Map, String, Map> centroid = CentroidCalculator.calculateCentroid(l);
                 patterns.add(centroid);
             }
         }
 
 	    //Search sentences for occurrences of the two entity tags
 	    //Returns: List of <tuple, context>
-	    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
+	    DataSet<Tuple2<Tuple2<String, String>, Tuple5<Map, String, Map, String, Map>>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
 
 	    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
 	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegments.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold, patterns)).name("Find patterns that generated those tuples");
@@ -163,18 +181,18 @@ public class App {
 	}
 
 
-    private static List<List> clusterPatterns(List<TupleContext> patternList, float similarityThreshold) {
+    private static List<List> clusterPatterns(List<Tuple5<Map, String, Map, String, Map>> patternList, float similarityThreshold) {
         List<List> clusters = new ArrayList<>();
-        for (TupleContext pattern : patternList) {
+        for (Tuple5<Map, String, Map, String, Map> pattern : patternList) {
             if (clusters.isEmpty()) {
-                List<TupleContext> newCluster = new ArrayList<>();
+                List<Tuple5<Map, String, Map, String, Map>> newCluster = new ArrayList<>();
                 newCluster.add(pattern);
                 clusters.add(newCluster);
             } else {
                 Integer clusterIndex = 0;
                 Integer nearestCluster = null;
                 Float greatestSimilarity = 0.0f;
-                for (List<TupleContext> cluster : clusters) {
+                for (List<Tuple5<Map, String, Map, String, Map>> cluster : clusters) {
                     Float similarity = DegreeOfMatchCalculator.calculateDegreeOfMatchWithCluster(pattern, cluster);
                     if (similarity > greatestSimilarity) {
                         nearestCluster = clusterIndex;
@@ -186,7 +204,7 @@ public class App {
                 if (greatestSimilarity > similarityThreshold) {
                     clusters.get(nearestCluster).add(pattern);
                 } else {
-                    List<TupleContext> separateCluster = new ArrayList<>();
+                    List<Tuple5<Map, String, Map, String, Map>> separateCluster = new ArrayList<>();
                     separateCluster.add(pattern);
                     clusters.add(separateCluster);
                 }

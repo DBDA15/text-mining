@@ -18,6 +18,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.util.Collector;
 
 import java.io.IOException;
 import java.util.*;
@@ -88,25 +89,27 @@ public class App {
         //Collect all raw patterns on the driver
         List<TupleContext> patternList = rawPatterns.collect();
 
+
         //Cluster patterns with a single-pass clustering algorithm
         List<List> clusters = clusterPatterns(patternList, parameters.similarityThreshold);
 
         //Remove clusters with less than 5 patterns?!
         final List<TupleContext> patterns = new ArrayList();
         for (List<TupleContext> l : clusters) {
+            //TODO: dynamic cluster size threshold
             if (l.size() >= parameters.minimalClusterSize) {
                 TupleContext centroid = CentroidCalculator.calculateCentroid(l);
                 patterns.add(centroid);
             }
         }
-        
+
 	    //Search sentences for occurrences of the two entity tags
 	    //Returns: List of <tuple, context>
 	    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
-	    
+
 	    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
 	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegments.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold, patterns)).name("Find patterns that generated those tuples");
-	    
+
 	    //Join location from seed tuples onto the matched locations: <<organization, <pattern_id, matched_location>>, <organization, seedtuple_location>>
         DataSet<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations.join(seedTuples).where(0).equalTo(0).name("Join location from seed tuples onto candidate tuples");
 
@@ -118,28 +121,28 @@ public class App {
 
         //Calculate pattern confidence: <pattern_id, confidence>
         DataSet<Tuple2<Integer, Float>> patternConfidences = patternsWithSummedUpPositiveAndNegatives.map(new CalculatePatternConfidences()).name("Calculate pattern confidence");
-        
+
         //Compile candidate tuple list: <pattern, <candidate tuple, similarity>>
         DataSet<Tuple2<Integer, Tuple2<Tuple2<String, String>, Float>>> patternsWithTuples = textSegments.flatMap(new CalculateBestPatternSimilarity(parameters.degreeOfMatchThreshold, patterns)).name("Calculate the similarity of the best pattern for each candidate tuple");
-        
+
         //Join candidate tuples with pattern confidences: <pattern_id, <<candidate tuple, similarity>, pattern_conf>>
         DataSet<Tuple2<Tuple2<Integer,Tuple2<Tuple2<String, String>,Float>>,Tuple2<Integer,Float>>> candidateTuplesWithPatternConfidences = patternsWithTuples.join(patternConfidences).where(0).equalTo(0).name("Join candidate tuples with pattern confidences");
 
         //Reformat to <candidate tuple, <pattern_conf, similarity>>
         DataSet<Tuple2<Tuple2<String, String>, Tuple2<Float, Float>>> candidateTuples = candidateTuplesWithPatternConfidences.map(new CandidateTupleSimplifier()).name("Reformat to <candidate tuple, <pattern_conf, similarity>>");
-        
+
         //Execute first step of tuple confidence calculation
         DataSet<Tuple2<String, Tuple2<String, Float>>> candidateTupleconfidencesWithOrganizationAsKey = candidateTuples.groupBy(0).reduceGroup(new CandidateTupleConfidenceCalculator()).name("Calculate candidate tuple confidences and use organization as key");
-        
+
         //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>
         DataSet<Tuple2<String, Tuple2<String, Float>>> filteredTuples = candidateTupleconfidencesWithOrganizationAsKey.filter(new CandidateTupleConfidenceFilter(parameters.tupleConfidenceThreshold)).name("Filter candidate tuples by their confidence");
-        
+
         //Filter candidate tuples by organization, choosing highest confidence: <organization, <location, tuple confidence>>
         DataSet<Tuple2<String, Tuple2<String, Float>>> uniqueFilteredTuples = filteredTuples.groupBy(0).reduceGroup(new UniqueOrganizationReducer()).name("Choose unique location for each organization based on highest confidence");
-        
+
         //Store new seed tuples without their confidence: <organization, location>
         DataSet<Tuple2<String, String>> newSeedTuples = uniqueFilteredTuples.map(new SeedTuplesExtractor()).name("Store new seed tuples without their confidence");
-        
+
         seedTuples = seedTuples.union(newSeedTuples).name("Merge new seed tuples into seed tuples");
 
 		seedTuples.writeAsText("results/seedTuples.txt");
@@ -154,7 +157,7 @@ public class App {
 		long endTime = System.currentTimeMillis();
 		System.out.format("Execution finished after %.3f s.\n", (endTime - startTime) / 1000d);
 	}
-  
+
 
     private static List<List> clusterPatterns(List<TupleContext> patternList, float similarityThreshold) {
         List<List> clusters = new ArrayList<>();

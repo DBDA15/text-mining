@@ -34,6 +34,8 @@ public class DegreeOfMatchCalculator {
                 }
             }
             return leftSimilarity + middleSimilarity + rightSimilarity;
+
+            //TODO: normalisieren: https://en.wikipedia.org/wiki/Cosine_similarity
         } else {
             return 0.0f;
         }

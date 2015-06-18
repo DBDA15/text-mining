@@ -9,8 +9,11 @@ import de.hpi.fgis.dbda.textmining.functions.*;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
+import org.apache.flink.api.common.functions.MapPartitionFunction;
+import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.io.RemoteCollectorConsumer;
 import org.apache.flink.api.java.io.RemoteCollectorImpl;
 import org.apache.flink.api.java.operators.DataSource;
@@ -85,28 +88,15 @@ public class App {
 
         //Search the sentences for raw patterns
         DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
-        
-        System.out.println("rawPatterns count: " + rawPatterns.count());
 
-        //TODO: Distribute clustering
-        //Collect all raw patterns on the driver
-        List<TupleContext> patternList = rawPatterns.collect();
+        //Cluster the raw patterns in a partition
+        DataSet<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
 
-        System.out.println("Pattern List size: " + patternList.size());
+        //Cluster the centroids from all partitions
+        DataSet<Tuple2<TupleContext, Integer>> finalClusters = clusterCentroids.mapPartition(new ClusterCentroids(parameters.similarityThreshold)).name("Cluster the cluster centroids").setParallelism(1);
 
-        //Cluster patterns with a single-pass clustering algorithm
-        List<List> clusters = clusterPatterns(patternList, parameters.similarityThreshold);
 
-        //Remove clusters with less than 5 patterns?!
-        final List<TupleContext> patterns = new ArrayList();
-        for (List<TupleContext> l : clusters) {
-            //TODO: dynamic cluster size threshold
-            if (l.size() >= parameters.minimalClusterSize) {
-                TupleContext centroid = CentroidCalculator.calculateCentroid(l);
-                patterns.add(centroid);
-            }
-        }
-
+        /*
 	    //Search sentences for occurrences of the two entity tags
 	    //Returns: List of <tuple, context>
 	    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
@@ -149,7 +139,7 @@ public class App {
 
         seedTuples = seedTuples.union(newSeedTuples).name("Merge new seed tuples into seed tuples");
 
-		seedTuples.writeAsText("results/seedTuples.txt", WriteMode.OVERWRITE);
+		seedTuples.writeAsText("results/seedTuples.txt", WriteMode.OVERWRITE);*/
 
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
@@ -220,7 +210,7 @@ public class App {
 
         // Set the default parallelism explicitly, if requested.
         if (this.parameters.parallelism != -1) {
-            executionEnvironment.setDegreeOfParallelism(this.parameters.parallelism);
+            executionEnvironment.setParallelism(this.parameters.parallelism);
         }
 
         return executionEnvironment;

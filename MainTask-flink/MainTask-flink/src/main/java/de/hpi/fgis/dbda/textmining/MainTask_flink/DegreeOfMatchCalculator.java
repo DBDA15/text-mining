@@ -6,15 +6,15 @@ import java.util.Map;
 public class DegreeOfMatchCalculator {
 
     public static Float calculateDegreeOfMatch(TupleContext pattern, TupleContext tuple) {
-        Map<String, Float> centroidLeft = tuple.f0;
-        Map<String, Float> centroidMiddle = tuple.f2;
-        Map<String, Float> centroidRight = tuple.f4;
+        Map<String, Float> centroidLeft = tuple._1();
+        Map<String, Float> centroidMiddle = tuple._3();
+        Map<String, Float> centroidRight = tuple._5();
 
-        Map<String, Float> patternLeft = pattern.f0;
-        Map<String, Float> patternMiddle = pattern.f2;
-        Map<String, Float> patternRight = pattern.f4;
+        Map<String, Float> patternLeft = pattern._1();
+        Map<String, Float> patternMiddle = pattern._3();
+        Map<String, Float> patternRight = pattern._5();
 
-        if (pattern.f1.equals(tuple.f1) && pattern.f3.equals(tuple.f3)) {
+        if (pattern._2().equals(tuple._2()) && pattern._4().equals(tuple._4())) {
             float leftSimilarity = 0;
             float middleSimilarity = 0;
             float rightSimilarity = 0;

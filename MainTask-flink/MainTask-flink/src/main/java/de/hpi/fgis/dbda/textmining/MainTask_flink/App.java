@@ -17,6 +17,7 @@ import org.apache.flink.api.java.operators.DataSource;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.core.fs.FileSystem.WriteMode;
 import org.apache.flink.core.fs.Path;
 
 import java.io.IOException;
@@ -83,6 +84,8 @@ public class App {
 
         //Search the sentences for raw patterns
         DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
+        
+        rawPatterns.print();
 
         //TODO: Distribute clustering
         //Collect all raw patterns on the driver
@@ -144,7 +147,7 @@ public class App {
         
         seedTuples = seedTuples.union(newSeedTuples).name("Merge new seed tuples into seed tuples");
 
-		seedTuples.writeAsText("results/seedTuples.txt");
+		seedTuples.writeAsText("results/seedTuples.txt", WriteMode.OVERWRITE);
 
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();

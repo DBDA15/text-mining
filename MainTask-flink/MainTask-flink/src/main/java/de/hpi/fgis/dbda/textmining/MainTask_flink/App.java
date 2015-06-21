@@ -146,7 +146,7 @@ public class App {
         //##################
 
         //System.out.println("Total tuples:" + resultingSeedTuples.count());
-        resultingSeedTuples.writeAsText("results/seedTuples.txt", FileSystem.WriteMode.OVERWRITE);
+        resultingSeedTuples.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
 
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
@@ -283,6 +283,9 @@ public class App {
 
 		@Parameter(names = "--tupleConfidenceThreshold", description = "Threshold for tuple confidence", required = true)
 		public double tupleConfidenceThreshold;
+
+		@Parameter(names = "--output", description = "Output file", required = true)
+		public String output;
 
 		@Parameter(description = "input tsv files", required = true)
 		public List<String> inputFiles = new ArrayList<String>();

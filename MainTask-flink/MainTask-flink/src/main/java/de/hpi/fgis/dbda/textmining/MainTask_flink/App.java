@@ -76,15 +76,17 @@ public class App {
 
 		}
 		
-		DataSet<String> cleanSentences = allLines.map(new ReplaceNewLines());
+		DataSet<String> taggedSentences = allLines;
 		
-		DataSet<String> splittedSentences = cleanSentences.flatMap(new SplitSentences());
+		if (!parameters.alreadyTagged) {
 		
-		//splittedSentences.first(50).print();
+			DataSet<String> cleanSentences = allLines.map(new ReplaceNewLines());
+			
+			DataSet<String> splittedSentences = cleanSentences.flatMap(new SplitSentences());
+			
+			taggedSentences = splittedSentences.map(new TagSentences());
 		
-		DataSet<String> taggedSentences = splittedSentences.map(new TagSentences());
-
-		taggedSentences.writeAsText(parameters.output+"/tagged", FileSystem.WriteMode.OVERWRITE);
+		}
 		
         //Filter sentences: retain only those that contain both entity tags
 		DataSet<String> sentencesWithTags = taggedSentences.filter(new FilterByTags(task_entityTags)).name("Filtering out lines by NER tags");
@@ -160,7 +162,7 @@ public class App {
         //##################
 
         //System.out.println("Total tuples:" + resultingSeedTuples.count());
-        //resultingSeedTuples.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
+        resultingSeedTuples.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
 
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
@@ -274,6 +276,9 @@ public class App {
 
 		//Parameters
 
+		@Parameter(names = "--alreadyTagged", description = "Are the input files already tagged?", required = true)
+		public boolean alreadyTagged;
+		
 		@Parameter(names = "--seedTuples", description = "Seed tuple file", required = true)
 		public String seedTuples;
 

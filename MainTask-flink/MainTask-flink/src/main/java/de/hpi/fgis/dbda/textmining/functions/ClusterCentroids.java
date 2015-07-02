@@ -1,15 +1,17 @@
 package de.hpi.fgis.dbda.textmining.functions;
 
-import de.hpi.fgis.dbda.textmining.MainTask_flink.CentroidCalculator;
-import de.hpi.fgis.dbda.textmining.MainTask_flink.DegreeOfMatchCalculator;
-import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.util.Collector;
-
 import java.util.ArrayList;
 import java.util.List;
 
-public class ClusterCentroids implements org.apache.flink.api.common.functions.MapPartitionFunction<Tuple2<TupleContext, Integer>, TupleContext> {
+import org.apache.flink.api.common.functions.GroupReduceFunction;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.util.Collector;
+
+import de.hpi.fgis.dbda.textmining.MainTask_flink.CentroidCalculator;
+import de.hpi.fgis.dbda.textmining.MainTask_flink.DegreeOfMatchCalculator;
+import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
+
+public class ClusterCentroids implements GroupReduceFunction<Tuple2<TupleContext, Integer>, TupleContext> {
 
     private double similarityThreshold;
     private int minimalClusterSize;
@@ -21,7 +23,7 @@ public class ClusterCentroids implements org.apache.flink.api.common.functions.M
     }
 
     @Override
-    public void mapPartition(Iterable<Tuple2<TupleContext, Integer>> centroids, Collector<TupleContext> collector) throws Exception {
+    public void reduce(Iterable<Tuple2<TupleContext, Integer>> centroids, Collector<TupleContext> collector) throws Exception {
         List<Tuple2<List, Integer>> clusters = new ArrayList<>();
         for (Tuple2<TupleContext, Integer> centroidWithSize : centroids) {
             TupleContext centroid = centroidWithSize.f0;

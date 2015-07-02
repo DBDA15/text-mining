@@ -1,33 +1,50 @@
 package de.hpi.fgis.dbda.textmining.MainTask_flink;
 
 
-import de.hpi.fgis.dbda.textmining.functions.*;
-import edu.stanford.nlp.ie.AbstractSequenceClassifier;
-import edu.stanford.nlp.ling.CoreLabel;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
 import java.io.IOException;
-import java.io.Reader;
-import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.io.RemoteCollectorImpl;
 import org.apache.flink.api.java.operators.DataSource;
 import org.apache.flink.api.java.operators.IterativeDataSet;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.client.LocalExecutor;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
-import org.apache.flink.api.java.DataSet;
-import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.core.fs.Path;
 
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
+
+import de.hpi.fgis.dbda.textmining.functions.CalculateBestPatternSimilarity;
+import de.hpi.fgis.dbda.textmining.functions.CalculatePatternConfidences;
+import de.hpi.fgis.dbda.textmining.functions.CandidateTupleConfidenceCalculator;
+import de.hpi.fgis.dbda.textmining.functions.CandidateTupleConfidenceFilter;
+import de.hpi.fgis.dbda.textmining.functions.CandidateTupleSimplifier;
+import de.hpi.fgis.dbda.textmining.functions.ClusterCentroids;
+import de.hpi.fgis.dbda.textmining.functions.ClusterPartition;
+import de.hpi.fgis.dbda.textmining.functions.ExtractOrganizationSentenceTuples;
+import de.hpi.fgis.dbda.textmining.functions.FilterByTags;
+import de.hpi.fgis.dbda.textmining.functions.MapPositivesAndNegatives;
+import de.hpi.fgis.dbda.textmining.functions.MapSeedTuplesFromStrings;
+import de.hpi.fgis.dbda.textmining.functions.ReducePositivesAndNegatives;
+import de.hpi.fgis.dbda.textmining.functions.ReplaceNewLines;
+import de.hpi.fgis.dbda.textmining.functions.SearchForTagOccurences;
+import de.hpi.fgis.dbda.textmining.functions.SearchRawPatterns;
+import de.hpi.fgis.dbda.textmining.functions.SeedTuplesExtractor;
+import de.hpi.fgis.dbda.textmining.functions.SplitSentences;
+import de.hpi.fgis.dbda.textmining.functions.TagSentences;
+import de.hpi.fgis.dbda.textmining.functions.TupleGenerationPatternsFinder;
+import de.hpi.fgis.dbda.textmining.functions.UniqueOrganizationReducer;
 
 /** Implementation of the SINDY algorithm for scalable IND discovery. */
 public class App {
@@ -80,11 +97,11 @@ public class App {
 		
 		if (!parameters.alreadyTagged) {
 		
-			DataSet<String> cleanSentences = allLines.map(new ReplaceNewLines());
+			DataSet<String> cleanSentences = allLines.map(new ReplaceNewLines()).name("Replacing new lines");
 			
-			DataSet<String> splittedSentences = cleanSentences.flatMap(new SplitSentences());
+			DataSet<String> splittedSentences = cleanSentences.flatMap(new SplitSentences()).name("Splitting sentences");
 			
-			taggedSentences = splittedSentences.map(new TagSentences());
+			taggedSentences = splittedSentences.map(new TagSentences()).name("NER-Tagging sentences");
 		
 		}
 		
@@ -103,7 +120,7 @@ public class App {
 
         //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
         DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
-
+        
         //Search the sentences for raw patterns
         DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
 
@@ -111,7 +128,7 @@ public class App {
         DataSet<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
 
         //Cluster the centroids from all partitions
-        DataSet<TupleContext> finalPatterns = clusterCentroids.mapPartition(new ClusterCentroids(parameters.similarityThreshold, parameters.minimalClusterSize)).name("Cluster the cluster centroids").setParallelism(1);
+        DataSet<TupleContext> finalPatterns = clusterCentroids.reduceGroup(new ClusterCentroids(parameters.similarityThreshold, parameters.minimalClusterSize)).name("Cluster the cluster centroids");
 
 	    //Search sentences for occurrences of the two entity tags
 	    //Returns: List of <tuple, context>

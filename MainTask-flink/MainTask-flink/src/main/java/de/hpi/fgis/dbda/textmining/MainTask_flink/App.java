@@ -2,10 +2,14 @@ package de.hpi.fgis.dbda.textmining.MainTask_flink;
 
 
 import de.hpi.fgis.dbda.textmining.functions.*;
+import edu.stanford.nlp.ie.AbstractSequenceClassifier;
+import edu.stanford.nlp.ling.CoreLabel;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
 import java.io.IOException;
+import java.io.Reader;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
@@ -71,9 +75,19 @@ public class App {
 			}
 
 		}
+		
+		DataSet<String> cleanSentences = allLines.map(new ReplaceNewLines());
+		
+		DataSet<String> splittedSentences = cleanSentences.flatMap(new SplitSentences());
+		
+		//splittedSentences.first(50).print();
+		
+		DataSet<String> taggedSentences = splittedSentences.map(new TagSentences());
 
+		taggedSentences.writeAsText(parameters.output+"/tagged", FileSystem.WriteMode.OVERWRITE);
+		
         //Filter sentences: retain only those that contain both entity tags
-		DataSet<String> sentencesWithTags = allLines.filter(new FilterByTags(task_entityTags)).name("Filtering out lines by NER tags");
+		DataSet<String> sentencesWithTags = taggedSentences.filter(new FilterByTags(task_entityTags)).name("Filtering out lines by NER tags");
 
         //Generate a mapping <organization, sentence>
 		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples()).name("Extracting Orgainization Sentence Tuples");
@@ -146,7 +160,7 @@ public class App {
         //##################
 
         //System.out.println("Total tuples:" + resultingSeedTuples.count());
-        resultingSeedTuples.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
+        //resultingSeedTuples.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
 
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();

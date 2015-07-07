@@ -3,8 +3,11 @@ package de.hpi.fgis.dbda.textmining.functions;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.CentroidCalculator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.DegreeOfMatchCalculator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
+import org.apache.flink.api.common.accumulators.IntCounter;
+import org.apache.flink.api.common.functions.RichMapPartitionFunction;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.util.Collector;
 
 import java.util.ArrayList;
@@ -13,13 +16,20 @@ import java.util.List;
 /**
  * Created by eldarion on 18/06/15.
  */
-public class ClusterPartition implements org.apache.flink.api.common.functions.MapPartitionFunction<TupleContext, Tuple2<TupleContext, Integer>> {
+public class ClusterPartition extends RichMapPartitionFunction<TupleContext, Tuple2<TupleContext, Integer>> {
 
     private double similarityThreshold;
+    private IntCounter numCentroids;
 
     public ClusterPartition(double similarityThreshold) {
         super();
         this.similarityThreshold = similarityThreshold;
+    }
+
+    @Override
+    public void open(Configuration parameters) throws Exception {
+        numCentroids = new IntCounter();
+        getRuntimeContext().addAccumulator("numCentroids" + getIterationRuntimeContext().getSuperstepNumber(), numCentroids);
     }
 
     @Override
@@ -55,6 +65,7 @@ public class ClusterPartition implements org.apache.flink.api.common.functions.M
         for (List<TupleContext> cluster : clusters) {
             //TODO: dynamic cluster size threshold
             TupleContext centroid = CentroidCalculator.calculateCentroid(cluster);
+            this.numCentroids.add(1);
             collector.collect(new Tuple2(centroid, cluster.size()));
         }
     }

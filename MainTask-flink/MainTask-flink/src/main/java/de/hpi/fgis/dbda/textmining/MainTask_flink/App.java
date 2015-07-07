@@ -1,6 +1,7 @@
 package de.hpi.fgis.dbda.textmining.MainTask_flink;
 
 
+import de.hpi.fgis.dbda.textmining.functions.*;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
@@ -10,6 +11,7 @@ import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.io.RemoteCollectorImpl;
@@ -24,27 +26,6 @@ import org.apache.flink.core.fs.Path;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
-
-import de.hpi.fgis.dbda.textmining.functions.CalculateBestPatternSimilarity;
-import de.hpi.fgis.dbda.textmining.functions.CalculatePatternConfidences;
-import de.hpi.fgis.dbda.textmining.functions.CandidateTupleConfidenceCalculator;
-import de.hpi.fgis.dbda.textmining.functions.CandidateTupleConfidenceFilter;
-import de.hpi.fgis.dbda.textmining.functions.CandidateTupleSimplifier;
-import de.hpi.fgis.dbda.textmining.functions.ClusterCentroids;
-import de.hpi.fgis.dbda.textmining.functions.ClusterPartition;
-import de.hpi.fgis.dbda.textmining.functions.ExtractOrganizationSentenceTuples;
-import de.hpi.fgis.dbda.textmining.functions.FilterByTags;
-import de.hpi.fgis.dbda.textmining.functions.MapPositivesAndNegatives;
-import de.hpi.fgis.dbda.textmining.functions.MapSeedTuplesFromStrings;
-import de.hpi.fgis.dbda.textmining.functions.ReducePositivesAndNegatives;
-import de.hpi.fgis.dbda.textmining.functions.ReplaceNewLines;
-import de.hpi.fgis.dbda.textmining.functions.SearchForTagOccurences;
-import de.hpi.fgis.dbda.textmining.functions.SearchRawPatterns;
-import de.hpi.fgis.dbda.textmining.functions.SeedTuplesExtractor;
-import de.hpi.fgis.dbda.textmining.functions.SplitSentences;
-import de.hpi.fgis.dbda.textmining.functions.TagSentences;
-import de.hpi.fgis.dbda.textmining.functions.TupleGenerationPatternsFinder;
-import de.hpi.fgis.dbda.textmining.functions.UniqueOrganizationReducer;
 
 /** Implementation of the SINDY algorithm for scalable IND discovery. */
 public class App {
@@ -158,7 +139,7 @@ public class App {
         //Reformat to <candidate tuple, <pattern_conf, similarity>>
         DataSet<Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>> candidateTuples = candidateTuplesWithPatternConfidences.map(new CandidateTupleSimplifier()).name("Reformat to <candidate tuple, <pattern_conf, similarity>>");
 
-        //Execute first step of tuple confidence calculation
+        //Execute first step of tuple confidence calculation: <organization, <location, tuple confidence>>
         DataSet<Tuple2<String, Tuple2<String, Double>>> candidateTupleconfidencesWithOrganizationAsKey = candidateTuples.groupBy(0).reduceGroup(new CandidateTupleConfidenceCalculator()).name("Calculate candidate tuple confidences and use organization as key");
 
         //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>
@@ -170,9 +151,11 @@ public class App {
         //Store new seed tuples without their confidence: <organization, location>
         DataSet<Tuple2<String, String>> newSeedTuples = uniqueFilteredTuples.map(new SeedTuplesExtractor()).name("Store new seed tuples without their confidence");
 
-        DataSet<Tuple2<String, String>> mergedSeedTuples = seedTuples.union(newSeedTuples).name("Merge new seed tuples into seed tuples");
+        DataSet<Tuple2<String, String>> mergedSeedTuples = seedTuples.union(newSeedTuples).distinct().name("Merge new seed tuples into seed tuples");
 
-        DataSet<Tuple2<String, String>> resultingSeedTuples = seedTuples.closeWith(mergedSeedTuples);
+        DataSet<Tuple2<String, String>> countedMergedSeedTuples = mergedSeedTuples.map(new CountSeedTuples()).name("Count merged seed tuples");
+
+        DataSet<Tuple2<String, String>> resultingSeedTuples = seedTuples.closeWith(countedMergedSeedTuples);
 
         //##################
         //#END OF ITERATION#
@@ -184,7 +167,19 @@ public class App {
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
         try {
-            env.execute("Snowball");
+            JobExecutionResult results = env.execute("Snowball");
+            Integer i;
+            System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
+                    "new seed tuples => final seed tuples");
+            for (i = 1; i <= 4; i++) {
+                String output = "Iteration " + i + ": " + results.getAccumulatorResult("numRawPatterns" + i) + " => " +
+                        results.getAccumulatorResult("numCentroids" + i) + " => " +
+                        results.getAccumulatorResult("numFinalPatterns" + i) + " => " +
+                        results.getAccumulatorResult("numCandidateTuples" + i) + " => " +
+                        results.getAccumulatorResult("numNewSeedTuples" + i) + " => " +
+                        results.getAccumulatorResult("numFinalSeedTuples" + i);
+                System.out.println(output);
+            }
         } finally {
             RemoteCollectorImpl.shutdownAll();
         }

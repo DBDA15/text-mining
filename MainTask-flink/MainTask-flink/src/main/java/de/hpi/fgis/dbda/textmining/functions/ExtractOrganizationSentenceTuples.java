@@ -4,9 +4,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.util.Collector;
 
+@ForwardedFields("*->f1")
 public class ExtractOrganizationSentenceTuples implements FlatMapFunction<String, Tuple2<String, String>> {
 	
 	private Pattern NERTagPattern = Pattern.compile("<ORGANIZATION>(.+?)</ORGANIZATION>");

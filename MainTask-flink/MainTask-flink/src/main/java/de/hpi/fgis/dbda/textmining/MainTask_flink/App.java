@@ -86,7 +86,7 @@ public class App {
 		
 		}
 		
-        //Filter sentences: retain only those that contain both entity tags
+        //Filter sentences: retain only those that contain both entity tags: <sentence>
 		DataSet<String> sentencesWithTags = taggedSentences.filter(new FilterByTags(task_entityTags)).name("Filtering out lines by NER tags");
 
         //Generate a mapping <organization, sentence>
@@ -130,7 +130,7 @@ public class App {
         //Calculate pattern confidence: <pattern_id, confidence>
         DataSet<Tuple2<Integer, Double>> patternConfidences = patternsWithSummedUpPositiveAndNegatives.map(new CalculatePatternConfidences()).name("Calculate pattern confidence");
 
-        //Compile candidate tuple list: <pattern, <candidate tuple, similarity>>
+        //Compile candidate tuple list: <pattern_id, <candidate tuple, similarity>>
         DataSet<Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>>> patternsWithTuples = textSegments.flatMap(new CalculateBestPatternSimilarity(parameters.degreeOfMatchThreshold)).withBroadcastSet(finalPatterns, "finalPatterns").name("Calculate the similarity of the best pattern for each candidate tuple");
 
         //Join candidate tuples with pattern confidences: <pattern_id, <<candidate tuple, similarity>, pattern_conf>>
@@ -171,7 +171,7 @@ public class App {
             Integer i;
             System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
                     "new seed tuples => final seed tuples");
-            for (i = 1; i <= 4; i++) {
+            for (i = 1; i <= parameters.numberOfIterations; i++) {
                 String output = "Iteration " + i + ": " + results.getAccumulatorResult("numRawPatterns" + i) + " => " +
                         results.getAccumulatorResult("numCentroids" + i) + " => " +
                         results.getAccumulatorResult("numFinalPatterns" + i) + " => " +

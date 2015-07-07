@@ -3,8 +3,9 @@ package de.hpi.fgis.dbda.textmining.functions;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.SeedTuple;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields;
 
-
+@ForwardedFields("f0.f1.f0->f0")
 public class MapPositivesAndNegatives implements
 		MapFunction<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>, Tuple2<Integer, Tuple2<Integer, Integer>>> {
 

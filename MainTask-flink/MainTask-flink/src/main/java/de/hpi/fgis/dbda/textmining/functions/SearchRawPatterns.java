@@ -50,8 +50,6 @@ public class SearchRawPatterns extends RichFlatMapFunction<Tuple2<Tuple2<String,
 	                            <"New York City", "LOCATION"
 	                            */
 
-		List patterns = new ArrayList();
-
 		//Take note of where A and B appeared in the sentence (and with the right NER tags)
 		List<Integer> entity0sites = new ArrayList<Integer>();
 		List<Integer> entity1sites = new ArrayList<Integer>();

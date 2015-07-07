@@ -1,7 +1,9 @@
 package de.hpi.fgis.dbda.textmining.functions;
 
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields;
 
+@ForwardedFields("f0->f0")
 public class ReducePositivesAndNegatives implements
         org.apache.flink.api.common.functions.ReduceFunction<org.apache.flink.api.java.tuple.Tuple2<Integer, org.apache.flink.api.java.tuple.Tuple2<Integer, Integer>>> {
     @Override

@@ -31,8 +31,6 @@ public class CalculateBestPatternSimilarity extends RichFlatMapFunction<Tuple2<T
 		throws Exception {
 
         //Algorithm from figure 4
-        //
-        List<Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>>> candidateTuplesWithPatternAndSimilarity = new ArrayList();
 
         Tuple2<String, String> candidateTuple = arg0.f0;
         TupleContext tupleContext = arg0.f1;
@@ -52,11 +50,7 @@ public class CalculateBestPatternSimilarity extends RichFlatMapFunction<Tuple2<T
             patternIndex++;
         }
         if (bestSimilarity >= degreeOfMatchThreshold) {
-        	candidateTuplesWithPatternAndSimilarity.add(new Tuple2(bestPattern, new Tuple2(candidateTuple, bestSimilarity)));
-        }
-                
-		for (Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>> tuple : candidateTuplesWithPatternAndSimilarity) {
-			arg1.collect(tuple);
+            arg1.collect(new Tuple2(bestPattern, new Tuple2(candidateTuple, bestSimilarity)));
         }
     }
 }

@@ -6,7 +6,7 @@ import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 
-@ForwardedFields("f0->f0; f1->f1")
+@ForwardedFields("f0; f1")
 public class CountSeedTuples extends RichMapFunction<Tuple2<String, String>, Tuple2<String, String>> {
 
     private IntCounter numFinalSeedTuples;

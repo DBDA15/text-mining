@@ -133,7 +133,7 @@ public class App {
         //Compile candidate tuple list: <pattern_id, <candidate tuple, similarity>>
         DataSet<Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>>> patternsWithTuples = textSegments.flatMap(new CalculateBestPatternSimilarity(parameters.degreeOfMatchThreshold)).withBroadcastSet(finalPatterns, "finalPatterns").name("Calculate the similarity of the best pattern for each candidate tuple");
 
-        //Join candidate tuples with pattern confidences: <pattern_id, <<candidate tuple, similarity>, pattern_conf>>
+        //Join candidate tuples with pattern confidences: <<pattern_id, <candidate tuple, similarity>>, <pattern_id, pattern_conf>>
         DataSet<Tuple2<Tuple2<Integer,Tuple2<Tuple2<String, String>,Double>>,Tuple2<Integer,Double>>> candidateTuplesWithPatternConfidences = patternsWithTuples.join(patternConfidences).where(0).equalTo(0).name("Join candidate tuples with pattern confidences");
 
         //Reformat to <candidate tuple, <pattern_conf, similarity>>
@@ -166,6 +166,7 @@ public class App {
 
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
+        Integer lastSeedTuples = 0;
         try {
             JobExecutionResult results = env.execute("Snowball");
             Integer i;
@@ -176,9 +177,10 @@ public class App {
                         results.getAccumulatorResult("numCentroids" + i) + " => " +
                         results.getAccumulatorResult("numFinalPatterns" + i) + " => " +
                         results.getAccumulatorResult("numCandidateTuples" + i) + " => " +
-                        results.getAccumulatorResult("numNewSeedTuples" + i) + " => " +
+                        ((Integer)results.getAccumulatorResult("numFinalSeedTuples" + i) - lastSeedTuples) + " => " +
                         results.getAccumulatorResult("numFinalSeedTuples" + i);
                 System.out.println(output);
+                lastSeedTuples = results.getAccumulatorResult("numFinalSeedTuples" + i);
             }
         } finally {
             RemoteCollectorImpl.shutdownAll();

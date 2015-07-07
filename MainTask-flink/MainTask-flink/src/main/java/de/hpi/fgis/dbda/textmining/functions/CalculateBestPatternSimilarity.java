@@ -11,7 +11,9 @@ import org.apache.flink.util.Collector;
 
 import de.hpi.fgis.dbda.textmining.MainTask_flink.DegreeOfMatchCalculator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
+import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields;
 
+@ForwardedFields("f0->f1.f0")
 public class CalculateBestPatternSimilarity extends RichFlatMapFunction<Tuple2<Tuple2<String, String>, TupleContext>, Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>>> {
 
 	private double degreeOfMatchThreshold;

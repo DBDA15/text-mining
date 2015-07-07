@@ -3,7 +3,9 @@ package de.hpi.fgis.dbda.textmining.functions;
 import org.apache.flink.api.common.functions.GroupReduceFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.util.Collector;
+import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields;
 
+@ForwardedFields("f0.f0->f0; f0.f1->f1.f0")
 public class CandidateTupleConfidenceCalculator implements GroupReduceFunction<Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>, Tuple2<String, Tuple2<String, Double>>> {
 
 	@Override
@@ -20,7 +22,7 @@ public class CandidateTupleConfidenceCalculator implements GroupReduceFunction<T
 			}
 		}
 		
-		arg1.collect(new Tuple2<String, Tuple2<String, Double>>(tuple.f0, new Tuple2<String, Double>(tuple.f1, 1- tupleConfidence)));
+		arg1.collect(new Tuple2(tuple.f0, new Tuple2(tuple.f1, 1- tupleConfidence)));
 
 	}
 

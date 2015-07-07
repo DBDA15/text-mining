@@ -5,7 +5,9 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields;
 
+@ForwardedFields("f0.f1.f0->f0; f1.f1->f1.f0; f0.f1.f1->f1.f1")
 public class CandidateTupleSimplifier
 		extends
 		RichMapFunction<Tuple2<Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>>, Tuple2<Integer, Double>>, Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>> {

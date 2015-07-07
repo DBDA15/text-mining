@@ -3,13 +3,13 @@ package de.hpi.fgis.dbda.textmining.maintask;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.flink.api.java.DataSet;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -21,7 +21,11 @@ import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.storage.StorageLevel;
 
+import de.hpi.fgis.dbda.textmining.MainTask_flink.CentroidCalculator;
+import de.hpi.fgis.dbda.textmining.MainTask_flink.DegreeOfMatchCalculator;
+import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
 import scala.Tuple2;
+import scala.collection.Iterator;
 
 public class App
 {
@@ -158,9 +162,10 @@ public class App
         return calculateDegreeOfMatch(pattern, centroid);
     }
 
-    private static List<List> clusterPatterns(List<TupleContext> patternList) {
+    private static List<List> clusterPatterns(List<Tuple2<TupleContext, Integer>> patternList) {
         List<List> clusters = new ArrayList<>();
-        for (TupleContext pattern : patternList) {
+        for (Tuple2<TupleContext, Integer> patternWithCount : patternList) {
+        	TupleContext pattern = patternWithCount._1;
             if (clusters.isEmpty()) {
                 List<TupleContext> newCluster = new ArrayList<>();
                 newCluster.add(pattern);
@@ -227,6 +232,52 @@ public class App
             }
         }
 		return tokenList;
+	}
+    
+
+
+    private static List<TupleContext> calculateClusterCentroids(List<Tuple2<TupleContext, Integer>> patternList) {
+    	List<Tuple2<List, Integer>> clusters = new ArrayList<>();
+        for (Tuple2<TupleContext, Integer> centroidWithSize : patternList) {
+            TupleContext centroid = centroidWithSize._1;
+            Integer clusterSize = centroidWithSize._2;
+            if (clusters.isEmpty()) {
+                List<TupleContext> centroidList = new ArrayList<>();
+                centroidList.add(centroid);
+                clusters.add(new Tuple2(centroidList, clusterSize));
+            } else {
+                Integer clusterIndex = 0;
+                Integer nearestCluster = null;
+                Float greatestSimilarity = 0.0f;
+                for (Tuple2<List, Integer> cluster : clusters) {
+                    List<TupleContext> currentCentroidList = cluster._1;
+                    Float similarity = calculateDegreeOfMatchWithCluster(centroid, currentCentroidList);
+                    if (similarity > greatestSimilarity) {
+                        nearestCluster = clusterIndex;
+                        greatestSimilarity = similarity;
+                    }
+                    clusterIndex++;
+                }
+
+                if (greatestSimilarity > similarityThreshold) {
+                    clusters.get(nearestCluster)._1.add(centroid);
+                    clusters.get(nearestCluster)._2 += clusterSize;
+                } else {
+                    List<TupleContext> centroidList = new ArrayList<>();
+                    centroidList.add(centroid);
+                    clusters.add(new Tuple2(centroidList, clusterSize));
+                }
+            }
+        }
+        List<TupleContext> clusterCentroidList = new ArrayList<TupleContext>();
+        for (Tuple2<List, Integer> cluster : clusters) {
+            //TODO: dynamic cluster size threshold
+            if (cluster._2 > minimalClusterSize) {
+                TupleContext centroid = calculateCentroid(cluster._1);
+                clusterCentroidList.add(centroid);
+            }
+        }
+		return clusterCentroidList;
 	}
 
     public static void main( String[] args )
@@ -382,32 +433,62 @@ public class App
                             }
                         });
                 
+                JavaRDD<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartitions(new FlatMapFunction<Iterator<TupleContext>, Tuple2<TupleContext, Integer>>() {
+
+					@Override
+					public Iterable<Tuple2<TupleContext, Integer>> call(Iterator<TupleContext> rawPatterns)
+							throws Exception {
+						List<List> clusters = new ArrayList<>();
+						while(rawPatterns.hasNext()) {
+							TupleContext pattern = rawPatterns.next();
+				            if (clusters.isEmpty()) {
+				                List<TupleContext> newCluster = new ArrayList<>();
+				                newCluster.add(pattern);
+				                clusters.add(newCluster);
+				            } else {
+				                Integer clusterIndex = 0;
+				                Integer nearestCluster = null;
+				                Float greatestSimilarity = 0.0f;
+				                for (List<TupleContext> cluster : clusters) {
+				                    Float similarity = calculateDegreeOfMatchWithCluster(pattern, cluster);
+				                    if (similarity > greatestSimilarity) {
+				                        nearestCluster = clusterIndex;
+				                        greatestSimilarity = similarity;
+				                    }
+				                    clusterIndex++;
+				                }
+
+				                if (greatestSimilarity > similarityThreshold) {
+				                    clusters.get(nearestCluster).add(pattern);
+				                } else {
+				                    List<TupleContext> separateCluster = new ArrayList<>();
+				                    separateCluster.add(pattern);
+				                    clusters.add(separateCluster);
+				                }
+				            }
+				        }
+						List<Tuple2<TupleContext, Integer>> centroidList = new ArrayList<Tuple2<TupleContext, Integer>>();
+				        for (List<TupleContext> cluster : clusters) {
+				            //TODO: dynamic cluster size threshold
+				            TupleContext centroid = calculateCentroid(cluster);
+				            centroidList.add(new Tuple2(centroid, cluster.size()));
+				        }
+				        return centroidList;
+					}
+				});
+                
                 System.out.println("#########################");
                 System.out.println("Raw Patterns found: "+rawPatterns.count());
                 System.out.println("#########################");
 
                 //Collect all raw patterns on the driver
-                List<TupleContext> patternList = rawPatterns
+                List<Tuple2<TupleContext, Integer>> patternList = clusterCentroids
                         .collect();
 
-                //Cluster patterns with a single-pass clustering algorithm
-                List<List> clusters = clusterPatterns(patternList);
+                final List<TupleContext> finalPatterns = calculateClusterCentroids(patternList);
                 
                 System.out.println("#########################");
-                System.out.println("Clusters found: "+clusters.size());
-                System.out.println("#########################");
-
-                //Remove clusters with less than 5 patterns?!
-                final List<TupleContext> patterns = new ArrayList();
-                for (List<TupleContext> l : clusters) {
-                    if (l.size() >= minimalClusterSize) {
-                        TupleContext centroid = calculateCentroid(l);
-                        patterns.add(centroid);
-                    }
-                }
-                
-                System.out.println("#########################");
-                System.out.println("Patterns found: "+patterns.size());
+                System.out.println("Patterns found: "+finalPatterns.size());
                 System.out.println("#########################");
 
                 //System.out.println(patterns);
@@ -471,8 +552,8 @@ public class App
                                 TupleContext tupleContext = textSegment._2();
 
                                 Integer patternIndex = 0;
-                                while (patternIndex < patterns.size()) {
-                                    TupleContext pattern = patterns.get(patternIndex);
+                                while (patternIndex < finalPatterns.size()) {
+                                    TupleContext pattern = finalPatterns.get(patternIndex);
                                     float similarity = calculateDegreeOfMatch(tupleContext, pattern);
                                     if (similarity >= degreeOfMatchThreshold) {
                                         generatedTuples.add(new Tuple2(textSegment._1()._1(), new Tuple2(patternIndex, textSegment._1()._2())));
@@ -546,8 +627,8 @@ public class App
                                 Integer bestPattern = null;
                                 float bestSimilarity = 0.0f;
                                 Integer patternIndex = 0;
-                                while (patternIndex < patterns.size()) {
-                                    TupleContext pattern = patterns.get(patternIndex);
+                                while (patternIndex < finalPatterns.size()) {
+                                    TupleContext pattern = finalPatterns.get(patternIndex);
                                     float similarity = calculateDegreeOfMatch(tupleContext, pattern);
                                     if (similarity >= degreeOfMatchThreshold) {
                                         if (similarity > bestSimilarity) {
@@ -667,7 +748,7 @@ public class App
         }
     }
 
-    static class LineItem implements Serializable {
+	static class LineItem implements Serializable {
         Integer INDEX;
         String TEXT;
 

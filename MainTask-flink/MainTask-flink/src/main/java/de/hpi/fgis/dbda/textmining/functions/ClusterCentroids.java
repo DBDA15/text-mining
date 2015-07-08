@@ -2,7 +2,6 @@ package de.hpi.fgis.dbda.textmining.functions;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.IntConsumer;
 
 import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.functions.GroupReduceFunction;

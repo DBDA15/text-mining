@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.flink.api.java.DataSet;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -20,12 +19,7 @@ import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.storage.StorageLevel;
-
-import de.hpi.fgis.dbda.textmining.MainTask_flink.CentroidCalculator;
-import de.hpi.fgis.dbda.textmining.MainTask_flink.DegreeOfMatchCalculator;
-import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
 import scala.Tuple2;
-import scala.collection.Iterator;
 
 public class App
 {
@@ -236,15 +230,15 @@ public class App
     
 
 
-    private static List<TupleContext> calculateClusterCentroids(List<Tuple2<TupleContext, Integer>> patternList) {
+    private static List<TupleContext> calculateClusterCentroids(List<Tuple2<TupleContext, Integer>> centroidList) {
     	List<Tuple2<List, Integer>> clusters = new ArrayList<>();
-        for (Tuple2<TupleContext, Integer> centroidWithSize : patternList) {
+        for (Tuple2<TupleContext, Integer> centroidWithSize : centroidList) {
             TupleContext centroid = centroidWithSize._1;
             Integer clusterSize = centroidWithSize._2;
             if (clusters.isEmpty()) {
-                List<TupleContext> centroidList = new ArrayList<>();
-                centroidList.add(centroid);
-                clusters.add(new Tuple2(centroidList, clusterSize));
+                List<TupleContext> newCluster = new ArrayList<>();
+                newCluster.add(centroid);
+                clusters.add(new Tuple2(newCluster, clusterSize));
             } else {
                 Integer clusterIndex = 0;
                 Integer nearestCluster = null;
@@ -260,12 +254,13 @@ public class App
                 }
 
                 if (greatestSimilarity > similarityThreshold) {
-                    clusters.get(nearestCluster)._1.add(centroid);
-                    clusters.get(nearestCluster)._2 += clusterSize;
+                    List centroidsInNearestCluster = clusters.get(nearestCluster)._1;
+                    centroidsInNearestCluster.add(centroid);
+                    clusters.set(nearestCluster, new Tuple2(centroidsInNearestCluster, clusters.get(nearestCluster)._2 + clusterSize));
                 } else {
-                    List<TupleContext> centroidList = new ArrayList<>();
-                    centroidList.add(centroid);
-                    clusters.add(new Tuple2(centroidList, clusterSize));
+                    List<TupleContext> newCluster = new ArrayList<>();
+                    newCluster.add(centroid);
+                    clusters.add(new Tuple2(newCluster, clusterSize));
                 }
             }
         }
@@ -433,11 +428,9 @@ public class App
                             }
                         });
                 
-                JavaRDD<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartitions(new FlatMapFunction<Iterator<TupleContext>, Tuple2<TupleContext, Integer>>() {
-
-					@Override
-					public Iterable<Tuple2<TupleContext, Integer>> call(Iterator<TupleContext> rawPatterns)
-							throws Exception {
+                JavaRDD<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartitions(new FlatMapFunction<java.util.Iterator<TupleContext>, Tuple2<TupleContext, Integer>>() {
+                    @Override
+                    public Iterable<Tuple2<TupleContext, Integer>> call(java.util.Iterator<TupleContext> rawPatterns) throws Exception {
 						List<List> clusters = new ArrayList<>();
 						while(rawPatterns.hasNext()) {
 							TupleContext pattern = rawPatterns.next();

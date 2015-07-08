@@ -3,6 +3,7 @@ package de.hpi.fgis.dbda.textmining.functions;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.CentroidCalculator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.DegreeOfMatchCalculator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
+import org.apache.flink.api.common.accumulators.Histogram;
 import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.functions.RichMapPartitionFunction;
 import org.apache.flink.api.java.tuple.Tuple;
@@ -13,13 +14,12 @@ import org.apache.flink.util.Collector;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Created by eldarion on 18/06/15.
- */
+
 public class ClusterPartition extends RichMapPartitionFunction<TupleContext, Tuple2<TupleContext, Integer>> {
 
     private double similarityThreshold;
     private IntCounter numCentroids;
+    private Histogram histSimilarity;
 
     public ClusterPartition(double similarityThreshold) {
         super();
@@ -29,7 +29,9 @@ public class ClusterPartition extends RichMapPartitionFunction<TupleContext, Tup
     @Override
     public void open(Configuration parameters) throws Exception {
         numCentroids = new IntCounter();
+        histSimilarity = new Histogram();
         getRuntimeContext().addAccumulator("numCentroids" + getIterationRuntimeContext().getSuperstepNumber(), numCentroids);
+        getRuntimeContext().addAccumulator("histSimilarity" + getIterationRuntimeContext().getSuperstepNumber(), histSimilarity);
     }
 
     @Override
@@ -55,6 +57,7 @@ public class ClusterPartition extends RichMapPartitionFunction<TupleContext, Tup
 
                 if (greatestSimilarity > similarityThreshold) {
                     clusters.get(nearestCluster).add(pattern);
+                    histSimilarity.add(greatestSimilarity.intValue());
                 } else {
                     List<TupleContext> separateCluster = new ArrayList<>();
                     separateCluster.add(pattern);

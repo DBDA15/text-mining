@@ -182,6 +182,10 @@ public class App {
                 System.out.println(output);
                 lastSeedTuples = results.getAccumulatorResult("numFinalSeedTuples" + i);
             }
+            for (i = 1; i <= parameters.numberOfIterations; i++) {
+                String output = "Iteration " + i + ": " + results.getAccumulatorResult("histSimilarity" + i);
+                System.out.println(output);
+            }
         } finally {
             RemoteCollectorImpl.shutdownAll();
         }

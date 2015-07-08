@@ -19,38 +19,65 @@ public class DegreeOfMatchCalculator {
             double middleSimilarity = 0;
             double rightSimilarity = 0;
 
-            int centroidLeftSum = 0;
-            int centroidMiddleSum = 0;
-            int centroidRightSum = 0;
+            double centroidLeftSum = 0;
+            double centroidMiddleSum = 0;
+            double centroidRightSum = 0;
 
-            int patternLeftSum = 0;
-            int patternMiddleSum = 0;
-            int patternRightSum = 0;
+            double patternLeftSum = 0;
+            double patternMiddleSum = 0;
+            double patternRightSum = 0;
 
             for (String key : patternLeft.keySet()) {
+                patternLeftSum += Math.pow(patternLeft.get(key), 2);
                 if (centroidLeft.keySet().contains(key)) {
                     leftSimilarity += patternLeft.get(key) * centroidLeft.get(key);
-                    centroidLeftSum += Math.pow(centroidLeft.get(key), 2);
-                    patternLeftSum += Math.pow(patternLeft.get(key), 2);
                 }
             }
+            for (String key : centroidLeft.keySet()) {
+                centroidLeftSum += Math.pow(centroidLeft.get(key), 2);
+            }
+
             for (String key : patternMiddle.keySet()) {
+                patternMiddleSum += Math.pow(patternMiddle.get(key), 2);
                 if (centroidMiddle.keySet().contains(key)) {
                     middleSimilarity += patternMiddle.get(key) * centroidMiddle.get(key);
-                    centroidMiddleSum += Math.pow(centroidMiddle.get(key), 2);
-                    patternMiddleSum += Math.pow(patternMiddle.get(key), 2);
                 }
             }
+            for (String key : centroidMiddle.keySet()) {
+                centroidMiddleSum += Math.pow(centroidMiddle.get(key), 2);
+            }
+
             for (String key : patternRight.keySet()) {
+                patternRightSum += Math.pow(patternRight.get(key), 2);
                 if (centroidRight.keySet().contains(key)) {
                     rightSimilarity += patternRight.get(key) * centroidRight.get(key);
                     centroidRightSum += Math.pow(centroidRight.get(key), 2);
-                    patternRightSum += Math.pow(patternRight.get(key), 2);
                 }
             }
-            return (leftSimilarity / (Math.sqrt(centroidLeftSum) * Math.sqrt(patternLeftSum)))
-                    + (middleSimilarity / (Math.sqrt(centroidMiddleSum) * Math.sqrt(patternMiddleSum)))
-                    + (rightSimilarity / (Math.sqrt(centroidRightSum) * Math.sqrt(patternRightSum)));
+            for (String key : centroidRight.keySet()) {
+                centroidRightSum += Math.pow(centroidRight.get(key), 2);
+            }
+
+            double left, middle, right;
+
+            if (Math.sqrt(centroidLeftSum) > 0.0 || Math.sqrt(patternLeftSum) > 0.0) {
+                left = (leftSimilarity / (Math.sqrt(centroidLeftSum) * Math.sqrt(patternLeftSum)));
+            } else {
+                left = 0.0;
+            }
+
+            if (Math.sqrt(centroidMiddleSum) > 0.0 || Math.sqrt(patternMiddleSum) > 0.0) {
+                middle = (middleSimilarity / (Math.sqrt(centroidMiddleSum) * Math.sqrt(patternMiddleSum)));
+            } else {
+                middle = 0.0;
+            }
+
+            if (Math.sqrt(centroidRightSum) > 0.0 || Math.sqrt(patternRightSum) > 0.0) {
+                right = (rightSimilarity / (Math.sqrt(centroidRightSum) * Math.sqrt(patternRightSum)));
+            } else {
+                right = 0.0;
+            }
+            return left + middle + right;
 
             //TODO: normalisieren: https://en.wikipedia.org/wiki/Cosine_similarity
         } else {

@@ -77,7 +77,7 @@ public class DegreeOfMatchCalculator {
             } else {
                 right = 0.0;
             }
-            return left + middle + right;
+            return (left + middle + right) / 3;
 
             //TODO: normalisieren: https://en.wikipedia.org/wiki/Cosine_similarity
         } else {

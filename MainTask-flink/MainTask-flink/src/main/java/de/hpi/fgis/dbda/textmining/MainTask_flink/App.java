@@ -183,8 +183,10 @@ public class App {
                 lastSeedTuples = results.getAccumulatorResult("numFinalSeedTuples" + i);
             }
             for (i = 1; i <= parameters.numberOfIterations; i++) {
-                String output = "Iteration " + i + ": " + results.getAccumulatorResult("histSimilarity" + i);
-                System.out.println(output);
+                System.out.println("Iteration " + i + " Histograms:");
+                System.out.println("Cluster Similarity: " + results.getAccumulatorResult("histClusterSimilarities" + i));
+                System.out.println("Match Similarity: " + results.getAccumulatorResult("histMatchSimilarities" + i));
+                System.out.println("Tuple Confidences: " + results.getAccumulatorResult("histTupleConfidences" + i));
             }
         } finally {
             RemoteCollectorImpl.shutdownAll();
@@ -309,16 +311,16 @@ public class App {
 		@Parameter(names = "--maxDistance", description = "Maximum distance between both entity tags in tokens", required = true)
 		public int maxDistance;
 
-		@Parameter(names = "--similarityThreshold", description = "Similarity threshold for clustering of patterns", required = true)
+		@Parameter(names = "--similarityThreshold", description = "Similarity threshold for clustering of patterns (range 0.0-1.0)", required = true)
 		public double similarityThreshold;
 
-		@Parameter(names = "--degreeOfMatchThreshold", description = "Minimal degree of match for a pattern to match a text segment", required = true)
+		@Parameter(names = "--degreeOfMatchThreshold", description = "Minimal degree of match for a pattern to match a text segment (range 0.0-1.0)", required = true)
 		public double degreeOfMatchThreshold;
 
 		@Parameter(names = "--minimalClusterSize", description = "Minimal size of cluster", required = true)
 		public int minimalClusterSize;
 
-		@Parameter(names = "--tupleConfidenceThreshold", description = "Threshold for tuple confidence", required = true)
+		@Parameter(names = "--tupleConfidenceThreshold", description = "Threshold for tuple confidence (range 0.0-1.0)", required = true)
 		public double tupleConfidenceThreshold;
 
 		@Parameter(names = "--output", description = "Output file", required = true)

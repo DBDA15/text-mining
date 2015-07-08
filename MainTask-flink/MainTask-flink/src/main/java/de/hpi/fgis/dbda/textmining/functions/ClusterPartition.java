@@ -19,7 +19,7 @@ public class ClusterPartition extends RichMapPartitionFunction<TupleContext, Tup
 
     private double similarityThreshold;
     private IntCounter numCentroids;
-    private Histogram histSimilarity;
+    private Histogram histClusterSimilarities;
 
     public ClusterPartition(double similarityThreshold) {
         super();
@@ -29,9 +29,9 @@ public class ClusterPartition extends RichMapPartitionFunction<TupleContext, Tup
     @Override
     public void open(Configuration parameters) throws Exception {
         numCentroids = new IntCounter();
-        histSimilarity = new Histogram();
+        histClusterSimilarities = new Histogram();
         getRuntimeContext().addAccumulator("numCentroids" + getIterationRuntimeContext().getSuperstepNumber(), numCentroids);
-        getRuntimeContext().addAccumulator("histSimilarity" + getIterationRuntimeContext().getSuperstepNumber(), histSimilarity);
+        getRuntimeContext().addAccumulator("histClusterSimilarities" + getIterationRuntimeContext().getSuperstepNumber(), histClusterSimilarities);
     }
 
     @Override
@@ -55,9 +55,9 @@ public class ClusterPartition extends RichMapPartitionFunction<TupleContext, Tup
                     clusterIndex++;
                 }
 
+                histClusterSimilarities.add(Math.round((float)(greatestSimilarity * 10)));
                 if (greatestSimilarity > similarityThreshold) {
                     clusters.get(nearestCluster).add(pattern);
-                    histSimilarity.add(greatestSimilarity.intValue());
                 } else {
                     List<TupleContext> separateCluster = new ArrayList<>();
                     separateCluster.add(pattern);

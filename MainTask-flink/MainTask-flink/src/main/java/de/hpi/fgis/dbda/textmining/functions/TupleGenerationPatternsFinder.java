@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import org.apache.flink.api.common.accumulators.Histogram;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields;
@@ -19,6 +20,7 @@ public class TupleGenerationPatternsFinder extends RichFlatMapFunction<Tuple2<Tu
 
 	private double degreeOfMatchThreshold;
 	private List<TupleContext> patterns;
+    private Histogram histMatchSimilarities;
 	
 	public TupleGenerationPatternsFinder(double degreeOfMatchThreshold) {
 		super();
@@ -28,6 +30,8 @@ public class TupleGenerationPatternsFinder extends RichFlatMapFunction<Tuple2<Tu
 	@Override
 	public void open(Configuration parameters) throws Exception {
 		this.patterns = getRuntimeContext().getBroadcastVariable("finalPatterns");
+        histMatchSimilarities = new Histogram();
+        getRuntimeContext().addAccumulator("histMatchSimilarities" + getIterationRuntimeContext().getSuperstepNumber(), histMatchSimilarities);
 	}
 
 	@Override
@@ -40,6 +44,7 @@ public class TupleGenerationPatternsFinder extends RichFlatMapFunction<Tuple2<Tu
         while (patternIndex < patterns.size()) {
             TupleContext pattern = patterns.get(patternIndex);
 			Double similarity = DegreeOfMatchCalculator.calculateDegreeOfMatch(tupleContext, pattern);
+            histMatchSimilarities.add(Math.round((float)(similarity * 10)));
             if (similarity >= degreeOfMatchThreshold) {
 				arg1.collect(new Tuple2(arg0.f0.f0, new Tuple2(patternIndex, arg0.f0.f1)));
             }

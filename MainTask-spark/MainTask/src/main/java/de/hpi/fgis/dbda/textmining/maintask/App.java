@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.hadoop.util.Time;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -19,6 +20,7 @@ import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.storage.StorageLevel;
+
 import scala.Tuple2;
 
 public class App
@@ -26,15 +28,15 @@ public class App
 
     //Parameters
 
-    private static Integer numberOfIterations = 3;
+    private static Integer numberOfIterations = 2;
     //Maximum size of the left window (left of first entity tag) and the right window (right of second entity tag)
     private static Integer windowSize = 5;
     //Maximum distance between both entity tags in tokens
     private static Integer maxDistance = 5;
     //Similarity threshold for clustering of patterns
-    private static Float similarityThreshold = 0.5f;
+    private static Float similarityThreshold = 0.4f;
     //Minimal degree of match for a pattern to match a text segment
-    private static Float degreeOfMatchThreshold = 0.5f;
+    private static Float degreeOfMatchThreshold = 0.6f;
     private static Integer minimalClusterSize = 5;
     private static Float tupleConfidenceThreshold = 0.9f;
 
@@ -322,6 +324,8 @@ public class App
 
     public static void main( String[] args )
     {
+    	
+    	long startTime = Time.now();
 
         final String outputDirectory = args[0];
         
@@ -397,8 +401,11 @@ public class App
             System.out.println("#########################");
 
             Integer currentIteration = 1;
+            List<Result> resultList = new ArrayList<Result>();
 
             while (currentIteration <= numberOfIterations) {
+            	Result result = new Result();
+            	result.iterationNumber = currentIteration;
                 currentIteration += 1;
                 System.out.println("#########################");
                 System.out.println("####Begin iteration " + currentIteration + "####");
@@ -516,19 +523,17 @@ public class App
 					}
 				});
                 
-                System.out.println("#########################");
-                System.out.println("Raw Patterns found: "+rawPatterns.count());
-                System.out.println("#########################");
+                result.rawPatterns = rawPatterns.count();
 
                 //Collect all raw patterns on the driver
                 List<Tuple2<TupleContext, Integer>> patternList = clusterCentroids
                         .collect();
+                
+                result.centroids = patternList.size();
 
                 final List<TupleContext> finalPatterns = calculateClusterCentroids(patternList);
                 
-                System.out.println("#########################");
-                System.out.println("Patterns found: "+finalPatterns.size());
-                System.out.println("#########################");
+                result.finalPatterns = finalPatterns.size();
 
                 //System.out.println(patterns);
 
@@ -705,9 +710,7 @@ public class App
                             }
                         });
                 
-                System.out.println("#########################");
-                System.out.println("Candidate Tuples found: "+candidateTuples.count());
-                System.out.println("#########################");
+                result.candidateTuples = candidateTuples.count();
 
                 //Execute first step of tuple confidence calculation
                 JavaPairRDD<Tuple2, Float> confidenceSubtrahend = candidateTuples
@@ -777,20 +780,34 @@ public class App
                             }
                         });
                 
-                System.out.println("#########################");
-                System.out.println("Seed Tuples found: "+newSeedTuples.count());
-                System.out.println("#########################");
+
+                result.newSeedTuples = newSeedTuples.count();
 
                 //Add new seed tuples to the old ones
-                seedTuples = seedTuples.union(newSeedTuples);
+                seedTuples = seedTuples.union(newSeedTuples).distinct();
+                
+                result.totalSeedTuples = seedTuples.count();
 
-                System.out.println("#########################");
-                System.out.println("Total Seed Tuples found: "+seedTuples.count());
-                System.out.println("#########################");
+                resultList.add(result);
 
-                seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples" + currentIteration);
             }
-            System.out.println("Fertisch!");
+            
+            seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples");
+            
+            System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
+                    "new seed tuples => final seed tuples");
+            for (Result r : resultList) {
+            	String output = "Iteration " + r.iterationNumber + ": " + r.rawPatterns + " => " +
+                        r.centroids + " => " +
+                        r.finalPatterns + " => " +
+                        r.candidateTuples + " => " +
+                        r.newSeedTuples + " => " +
+                        r.totalSeedTuples;
+                System.out.println(output);
+            }
+            long endTime = Time.now();
+            System.out.println("Finished!");
+            System.out.println("It took: " + ((endTime - startTime)/1000.0f) + " seconds.");
         }
     }
 

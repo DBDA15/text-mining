@@ -101,7 +101,7 @@ public class App {
         //####################
 
         //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
-        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples, JoinOperatorBase.JoinHint.REPARTITION_SORT_MERGE).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
+        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.joinWithTiny(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
         
         //Search the sentences for raw patterns
         DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
@@ -116,11 +116,12 @@ public class App {
 	    //Returns: List of <tuple, context>
 	    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
 
+        //######## Generate pattern confidences
 	    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
 	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegments.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold)).withBroadcastSet(finalPatterns, "finalPatterns").name("Find patterns that generated those tuples");
 
 	    //Join location from seed tuples onto the matched locations: <<organization, <pattern_id, matched_location>>, <organization, seedtuple_location>>
-        DataSet<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations.join(seedTuples).where(0).equalTo(0).name("Join location from seed tuples onto candidate tuples");
+        DataSet<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations.joinWithTiny(seedTuples).where(0).equalTo(0).name("Join location from seed tuples onto candidate tuples");
 
         //Return counts of positives and negatives depending on whether matched location equals seed tuple location: <pattern_id, <#positives, #negatives>>
         DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithPositiveAndNegatives = organizationsWithMatchedAndCorrectLocation.map(new MapPositivesAndNegatives()).name("Return counts of positives and negatives depending on whether matched location equals seed tuple location");
@@ -131,11 +132,13 @@ public class App {
         //Calculate pattern confidence: <pattern_id, confidence>
         DataSet<Tuple2<Integer, Double>> patternConfidences = patternsWithSummedUpPositiveAndNegatives.map(new CalculatePatternConfidences()).name("Calculate pattern confidence");
 
+        //######## Find occurences of patterns in text
         //Compile candidate tuple list: <pattern_id, <candidate tuple, similarity>>
         DataSet<Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>>> patternsWithTuples = textSegments.flatMap(new CalculateBestPatternSimilarity(parameters.degreeOfMatchThreshold)).withBroadcastSet(finalPatterns, "finalPatterns").name("Calculate the similarity of the best pattern for each candidate tuple");
 
+        //######## Make candidate tuples
         //Join candidate tuples with pattern confidences: <<pattern_id, <candidate tuple, similarity>>, <pattern_id, pattern_conf>>
-        DataSet<Tuple2<Tuple2<Integer,Tuple2<Tuple2<String, String>,Double>>,Tuple2<Integer,Double>>> candidateTuplesWithPatternConfidences = patternsWithTuples.join(patternConfidences).where(0).equalTo(0).name("Join candidate tuples with pattern confidences");
+        DataSet<Tuple2<Tuple2<Integer,Tuple2<Tuple2<String, String>,Double>>,Tuple2<Integer,Double>>> candidateTuplesWithPatternConfidences = patternsWithTuples.joinWithTiny(patternConfidences).where(0).equalTo(0).name("Join candidate tuples with pattern confidences");
 
         //Reformat to <candidate tuple, <pattern_conf, similarity>>
         DataSet<Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>> candidateTuples = candidateTuplesWithPatternConfidences.map(new CandidateTupleSimplifier()).name("Reformat to <candidate tuple, <pattern_conf, similarity>>");

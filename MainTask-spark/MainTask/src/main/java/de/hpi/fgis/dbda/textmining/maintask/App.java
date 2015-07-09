@@ -784,6 +784,10 @@ public class App
                 //Add new seed tuples to the old ones
                 seedTuples = seedTuples.union(newSeedTuples);
 
+                System.out.println("#########################");
+                System.out.println("Total Seed Tuples found: "+seedTuples.count());
+                System.out.println("#########################");
+
                 seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples" + currentIteration);
             }
             System.out.println("Fertisch!");

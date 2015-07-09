@@ -26,7 +26,7 @@ public class App
 
     //Parameters
 
-    private static Integer numberOfIterations = 0;
+    private static Integer numberOfIterations = 3;
     //Maximum size of the left window (left of first entity tag) and the right window (right of second entity tag)
     private static Integer windowSize = 5;
     //Maximum distance between both entity tags in tokens
@@ -130,22 +130,67 @@ public class App
             float leftSimilarity = 0;
             float middleSimilarity = 0;
             float rightSimilarity = 0;
+
+            float centroidLeftSum = 0;
+            float centroidMiddleSum = 0;
+            float centroidRightSum = 0;
+
+            float patternLeftSum = 0;
+            float patternMiddleSum = 0;
+            float patternRightSum = 0;
+
             for (String key : patternLeft.keySet()) {
+                patternLeftSum += Math.pow(patternLeft.get(key), 2);
                 if (centroidLeft.keySet().contains(key)) {
                     leftSimilarity += patternLeft.get(key) * centroidLeft.get(key);
                 }
             }
+            for (String key : centroidLeft.keySet()) {
+                centroidLeftSum += Math.pow(centroidLeft.get(key), 2);
+            }
+
             for (String key : patternMiddle.keySet()) {
+                patternMiddleSum += Math.pow(patternMiddle.get(key), 2);
                 if (centroidMiddle.keySet().contains(key)) {
                     middleSimilarity += patternMiddle.get(key) * centroidMiddle.get(key);
                 }
             }
+            for (String key : centroidMiddle.keySet()) {
+                centroidMiddleSum += Math.pow(centroidMiddle.get(key), 2);
+            }
+
             for (String key : patternRight.keySet()) {
+                patternRightSum += Math.pow(patternRight.get(key), 2);
                 if (centroidRight.keySet().contains(key)) {
                     rightSimilarity += patternRight.get(key) * centroidRight.get(key);
+                    centroidRightSum += Math.pow(centroidRight.get(key), 2);
                 }
             }
-            return leftSimilarity + middleSimilarity + rightSimilarity;
+            for (String key : centroidRight.keySet()) {
+                centroidRightSum += Math.pow(centroidRight.get(key), 2);
+            }
+
+            float left, middle, right;
+
+            if (Math.sqrt(centroidLeftSum) > 0.0 || Math.sqrt(patternLeftSum) > 0.0) {
+                left = (leftSimilarity / ((float)Math.sqrt(centroidLeftSum) * (float)Math.sqrt(patternLeftSum)));
+            } else {
+                left = 0.0f;
+            }
+
+            if (Math.sqrt(centroidMiddleSum) > 0.0 || Math.sqrt(patternMiddleSum) > 0.0) {
+                middle = (middleSimilarity / ((float)Math.sqrt(centroidMiddleSum) * (float)Math.sqrt(patternMiddleSum)));
+            } else {
+                middle = 0.0f;
+            }
+
+            if (Math.sqrt(centroidRightSum) > 0.0 || Math.sqrt(patternRightSum) > 0.0) {
+                right = (rightSimilarity / ((float)Math.sqrt(centroidRightSum) * (float)Math.sqrt(patternRightSum)));
+            } else {
+                right = 0.0f;
+            }
+
+            return (left + middle + right) / 3;
         } else {
             return 0.0f;
         }
@@ -306,8 +351,8 @@ public class App
         	}
 
             assert lineItems != null;
-            
-            //Filter sentences: retain only those that contain both entity tags
+
+            //Filter sentences: retain only those that contain both entity tags: <sentence>
             JavaRDD<String> sentencesWithTags = lineItems.filter(new Function<String, Boolean>() {
 				
 				@Override
@@ -317,7 +362,7 @@ public class App
 			});
 
             //Generate a mapping <organization, sentence>
-            JavaPairRDD<String, String> organizationKeyList = sentencesWithTags
+            JavaPairRDD<String, String> organizationSentenceTuples = sentencesWithTags
                     .flatMapToPair(new PairFlatMapFunction<String, String, String>() {
 
                         @Override
@@ -333,7 +378,7 @@ public class App
                         }
                     });
             
-            organizationKeyList.persist(StorageLevel.MEMORY_ONLY());
+            organizationSentenceTuples.persist(StorageLevel.MEMORY_ONLY());
 
             //Read the seed tuples as pairs: <organization, location>
             JavaPairRDD<String, String> seedTuples = context.textFile(args[1])
@@ -351,7 +396,7 @@ public class App
             System.out.println("#Finished initialization#");
             System.out.println("#########################");
 
-            Integer currentIteration = 0;
+            Integer currentIteration = 1;
 
             while (currentIteration <= numberOfIterations) {
                 currentIteration += 1;
@@ -360,7 +405,7 @@ public class App
                 System.out.println("#########################");
 
                 //Retain only those sentences with a organization from the seed tuples: <organization, <sentence, location>>
-                JavaPairRDD<String, Tuple2<String, String>> organizationKeyListJoined = organizationKeyList.join(seedTuples);
+                JavaPairRDD<String, Tuple2<String, String>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples);
 
                 //Search the sentences for raw patterns
                 JavaRDD<TupleContext> rawPatterns = organizationKeyListJoined
@@ -427,7 +472,8 @@ public class App
                                 return patterns;
                             }
                         });
-                
+
+                //Cluster the raw patterns in a partition
                 JavaRDD<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartitions(new FlatMapFunction<java.util.Iterator<TupleContext>, Tuple2<TupleContext, Integer>>() {
                     @Override
                     public Iterable<Tuple2<TupleContext, Integer>> call(java.util.Iterator<TupleContext> rawPatterns) throws Exception {

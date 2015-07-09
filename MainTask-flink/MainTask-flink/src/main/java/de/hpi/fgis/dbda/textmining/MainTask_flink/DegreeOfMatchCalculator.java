@@ -78,8 +78,6 @@ public class DegreeOfMatchCalculator {
                 right = 0.0;
             }
             return (left + middle + right) / 3;
-
-            //TODO: normalisieren: https://en.wikipedia.org/wiki/Cosine_similarity
         } else {
             return 0.0;
         }

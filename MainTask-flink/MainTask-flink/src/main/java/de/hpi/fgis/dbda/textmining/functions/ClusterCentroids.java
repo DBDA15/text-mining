@@ -39,9 +39,9 @@ public class ClusterCentroids extends RichGroupReduceFunction<Tuple2<TupleContex
             TupleContext centroid = centroidWithSize.f0;
             Integer clusterSize = centroidWithSize.f1;
             if (clusters.isEmpty()) {
-                List<TupleContext> centroidList = new ArrayList<>();
-                centroidList.add(centroid);
-                clusters.add(new Tuple2(centroidList, clusterSize));
+                List<TupleContext> newCluster = new ArrayList<>();
+                newCluster.add(centroid);
+                clusters.add(new Tuple2(newCluster, clusterSize));
             } else {
                 Integer clusterIndex = 0;
                 Integer nearestCluster = null;
@@ -57,12 +57,13 @@ public class ClusterCentroids extends RichGroupReduceFunction<Tuple2<TupleContex
                 }
 
                 if (greatestSimilarity > similarityThreshold) {
-                    clusters.get(nearestCluster).f0.add(centroid);
-                    clusters.get(nearestCluster).f1 += clusterSize;
+                    List centroidsInNearestCluster = clusters.get(nearestCluster).f0;
+                    centroidsInNearestCluster.add(centroid);
+                    clusters.set(nearestCluster, new Tuple2(centroidsInNearestCluster, clusters.get(nearestCluster).f1 + clusterSize));
                 } else {
-                    List<TupleContext> centroidList = new ArrayList<>();
-                    centroidList.add(centroid);
-                    clusters.add(new Tuple2(centroidList, clusterSize));
+                    List<TupleContext> newCluster = new ArrayList<>();
+                    newCluster.add(centroid);
+                    clusters.add(new Tuple2(newCluster, clusterSize));
                 }
             }
         }

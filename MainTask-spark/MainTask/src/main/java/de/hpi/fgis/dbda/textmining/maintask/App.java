@@ -404,6 +404,7 @@ public class App
             List<Result> resultList = new ArrayList<Result>();
 
             while (currentIteration <= numberOfIterations) {
+            	long iterationTime = Time.now();
             	Result result = new Result();
             	result.iterationNumber = currentIteration;
                 currentIteration += 1;
@@ -479,6 +480,10 @@ public class App
                                 return patterns;
                             }
                         });
+                
+                long rawPatternsTime = Time.now();
+                result.rawPatternsTime = (rawPatternsTime - iterationTime);
+                result.rawPatterns = rawPatterns.count();
 
                 //Cluster the raw patterns in a partition
                 JavaRDD<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartitions(new FlatMapFunction<java.util.Iterator<TupleContext>, Tuple2<TupleContext, Integer>>() {
@@ -523,7 +528,8 @@ public class App
 					}
 				});
                 
-                result.rawPatterns = rawPatterns.count();
+                long centroidsTime = Time.now();
+                result.centroidsTime = (centroidsTime - rawPatternsTime);
 
                 //Collect all raw patterns on the driver
                 List<Tuple2<TupleContext, Integer>> patternList = clusterCentroids
@@ -532,6 +538,9 @@ public class App
                 result.centroids = patternList.size();
 
                 final List<TupleContext> finalPatterns = calculateClusterCentroids(patternList);
+                
+                long finalPatternsTime = Time.now();
+                result.finalPatternsTime = (finalPatternsTime - centroidsTime);
                 
                 result.finalPatterns = finalPatterns.size();
 
@@ -710,6 +719,8 @@ public class App
                             }
                         });
                 
+                long candidateTuplesTime = Time.now();
+                result.candidateTuplesTime = (candidateTuplesTime - finalPatternsTime);
                 result.candidateTuples = candidateTuples.count();
 
                 //Execute first step of tuple confidence calculation
@@ -781,11 +792,15 @@ public class App
                         });
                 
 
+                long newSeedTuplesTime = Time.now();
+                result.newSeedTuplesTime = (newSeedTuplesTime - candidateTuplesTime);
                 result.newSeedTuples = newSeedTuples.count();
 
                 //Add new seed tuples to the old ones
                 seedTuples = seedTuples.union(newSeedTuples).distinct();
                 
+                long totalSeedTuplesTime = Time.now();
+                result.totalSeedTuplesTime = (totalSeedTuplesTime - newSeedTuplesTime);
                 result.totalSeedTuples = seedTuples.count();
 
                 resultList.add(result);
@@ -804,6 +819,13 @@ public class App
                         r.newSeedTuples + " => " +
                         r.totalSeedTuples;
                 System.out.println(output);
+            	String outputTime = "Times " + r.iterationNumber + ": " + (r.rawPatternsTime/1000.0f) + "s => " +
+                        (r.centroidsTime/1000.0f) + " s => " +
+                        (r.finalPatternsTime/1000.0f) + " s => " +
+                        (r.candidateTuplesTime/1000.0f) + " s => " +
+                        (r.newSeedTuplesTime/1000.0f) + " s => " +
+                        (r.totalSeedTuplesTime/1000.0f) + " s";
+                System.out.println(outputTime);
             }
             long endTime = Time.now();
             System.out.println("Finished!");

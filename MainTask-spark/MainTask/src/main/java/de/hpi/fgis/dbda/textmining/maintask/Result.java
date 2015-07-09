@@ -10,4 +10,11 @@ public class Result {
 	public long totalSeedTuples;
 	public long centroids;
 	
+	public long rawPatternsTime;
+	public long finalPatternsTime;
+	public long candidateTuplesTime;
+	public long newSeedTuplesTime;
+	public long totalSeedTuplesTime;
+	public long centroidsTime;
+	
 }

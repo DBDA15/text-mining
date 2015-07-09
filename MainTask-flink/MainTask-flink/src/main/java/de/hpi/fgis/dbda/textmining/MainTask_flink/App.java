@@ -12,6 +12,7 @@ import java.util.LinkedList;
 import java.util.List;
 
 import org.apache.flink.api.common.JobExecutionResult;
+import org.apache.flink.api.common.operators.base.JoinOperatorBase;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.io.RemoteCollectorImpl;
@@ -100,7 +101,7 @@ public class App {
         //####################
 
         //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
-        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
+        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples, JoinOperatorBase.JoinHint.REPARTITION_SORT_MERGE).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
         
         //Search the sentences for raw patterns
         DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
@@ -166,7 +167,7 @@ public class App {
 
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
-        Integer lastSeedTuples = 0;
+        Integer lastSeedTuples = 15;
         try {
             JobExecutionResult results = env.execute("Snowball");
             Integer i;

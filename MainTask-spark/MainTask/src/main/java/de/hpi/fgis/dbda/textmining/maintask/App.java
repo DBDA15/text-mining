@@ -580,6 +580,7 @@ public class App
                 textSegments.persist(StorageLevel.MEMORY_ONLY());
                 //textSegments.saveAsTextFile(outputDirectory + "/textsegments");
 
+                //######## Generate pattern confidences
                 //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
                 JavaPairRDD<String, Tuple2<Integer, String>> organizationsWithMatchedLocations = textSegments
                         .flatMapToPair(new PairFlatMapFunction<Tuple2<Tuple2, TupleContext>, String, Tuple2<Integer, String>>() {
@@ -650,6 +651,7 @@ public class App
 
                 //patternConfidences.saveAsTextFile(outputDirectory + "/patternconfidences");
 
+                //######## Find occurences of patterns in text
                 //Compile candidate tuple list: <pattern, <candidate tuple, similarity>>
                 JavaPairRDD<Integer, Tuple2<Tuple2, Float>> patternsWithTuples = textSegments
                         .flatMapToPair(new PairFlatMapFunction<Tuple2<Tuple2, TupleContext>, Integer, Tuple2<Tuple2, Float>>() {
@@ -686,6 +688,7 @@ public class App
 
                 //patternsWithTuples.saveAsTextFile(outputDirectory + "/patternsWithTuples" + currentIteration);
 
+                //######## Make candidate tuples
                 //Join candidate tuples with pattern confidences: <pattern_id, <<candidate tuple, similarity>, pattern_conf>>
                 JavaPairRDD<Integer, Tuple2<Tuple2<Tuple2, Float>, Float>> candidateTuplesWithPatternConfidences =
                         patternsWithTuples.join(patternConfidences);
@@ -728,7 +731,7 @@ public class App
                                 });
 
                 //Finish tuple confidence calculation, with organization as key: <organization, <location, tuple confidence>>
-                JavaPairRDD<String, Tuple2<String, Float>> confidences = confidenceSubtrahend
+                JavaPairRDD<String, Tuple2<String, Float>> candidateTupleconfidencesWithOrganizationAsKey = confidenceSubtrahend
                         .mapToPair(new PairFunction<Tuple2<Tuple2, Float>, String, Tuple2<String, Float>>() {
                             @Override
                             public Tuple2<String, Tuple2<String, Float>> call(Tuple2<Tuple2, Float> tupleAndSubtrahend) throws Exception {
@@ -740,7 +743,7 @@ public class App
                         });
 
                 //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>
-                JavaPairRDD<String, Tuple2<String, Float>> filteredTuples = confidences
+                JavaPairRDD<String, Tuple2<String, Float>> filteredTuples = candidateTupleconfidencesWithOrganizationAsKey
                         .filter(new Function<Tuple2<String, Tuple2<String, Float>>, Boolean>() {
                             @Override
                             public Boolean call(Tuple2<String, Tuple2<String, Float>> tupleWithConfidence) throws Exception {

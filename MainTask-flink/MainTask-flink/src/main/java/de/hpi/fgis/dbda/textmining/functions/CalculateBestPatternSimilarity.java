@@ -29,13 +29,13 @@ public class CalculateBestPatternSimilarity extends RichFlatMapFunction<Tuple2<T
     }
 
 	@Override
-	public void flatMap(Tuple2<Tuple2<String, String>, TupleContext> arg0, Collector<Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>>> arg1)
+	public void flatMap(Tuple2<Tuple2<String, String>, TupleContext> textSegment, Collector<Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>>> arg1)
 		throws Exception {
 
         //Algorithm from figure 4
 
-        Tuple2<String, String> candidateTuple = arg0.f0;
-        TupleContext tupleContext = arg0.f1;
+        Tuple2<String, String> candidateTuple = textSegment.f0;
+        TupleContext tupleContext = textSegment.f1;
 
         Integer bestPattern = null;
         Double bestSimilarity = 0.0;

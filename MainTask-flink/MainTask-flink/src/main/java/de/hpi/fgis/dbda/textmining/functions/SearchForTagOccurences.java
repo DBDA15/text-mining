@@ -44,8 +44,7 @@ public class SearchForTagOccurences implements
             tokenIndex++;
         }
 
-        //For each pair of A and B in the sentence, generate a text segment and add it to the list
-        List<Tuple2<Tuple2<String, String>, TupleContext>> textSegmentList = new ArrayList<>();
+        //For each pair of A and B in the sentence, generate a text segment and collect it
         for (Integer entity0site : entity0sites) {
             for (Integer entity1site : entity1sites) {
 
@@ -53,19 +52,14 @@ public class SearchForTagOccurences implements
                     Map beforeContext = ContextProducer.produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
                     Map betweenContext = ContextProducer.produceContext(tokenList.subList(entity0site + 1, entity1site));
                     Map afterContext = ContextProducer.produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
-                    textSegmentList.add(new Tuple2(new Tuple2(tokenList.get(entity0site).f0, tokenList.get(entity1site).f0), new TupleContext(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
+                    arg1.collect(new Tuple2(new Tuple2(tokenList.get(entity0site).f0, tokenList.get(entity1site).f0), new TupleContext(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
                 } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
                     Map beforeContext = ContextProducer.produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
                     Map betweenContext = ContextProducer.produceContext(tokenList.subList(entity1site + 1, entity0site));
                     Map afterContext = ContextProducer.produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
-                    textSegmentList.add(new Tuple2(new Tuple2(tokenList.get(entity0site).f0, tokenList.get(entity1site).f0), new TupleContext(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
+                    arg1.collect(new Tuple2(new Tuple2(tokenList.get(entity0site).f0, tokenList.get(entity1site).f0), new TupleContext(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
                 }
             }
         }
-        for (Tuple2<Tuple2<String, String>, TupleContext> tupleAndContext : textSegmentList) {
-            arg1.collect(tupleAndContext);        	
-        }
-
 	}
-
 }

@@ -143,7 +143,7 @@ public class App {
         //Reformat to <candidate tuple, <pattern_conf, similarity>>
         DataSet<Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>> candidateTuples = candidateTuplesWithPatternConfidences.map(new CandidateTupleSimplifier()).name("Reformat to <candidate tuple, <pattern_conf, similarity>>");
 
-        //Execute first step of tuple confidence calculation: <organization, <location, tuple confidence>>
+        //Execute tuple confidence calculation: <organization, <location, tuple confidence>>
         DataSet<Tuple2<String, Tuple2<String, Double>>> candidateTupleconfidencesWithOrganizationAsKey = candidateTuples.groupBy(0).reduceGroup(new CandidateTupleConfidenceCalculator()).name("Calculate candidate tuple confidences and use organization as key");
 
         //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>

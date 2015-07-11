@@ -94,7 +94,7 @@ public class App {
 		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples()).name("Extracting Orgainization Sentence Tuples");
 
         //Read the seed tuples as pairs: <organization, location>
-		IterativeDataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings()).iterate(parameters.numberOfIterations);
+		DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
 
         //####################
         //#START OF ITERATION#
@@ -105,12 +105,18 @@ public class App {
         
         //Search the sentences for raw patterns
         DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
-
+        
+        //rawPatterns.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
+        
         //Cluster the raw patterns in a partition
         DataSet<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
-
+       
+        //clusterCentroids.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
+        
         //Cluster the centroids from all partitions
         DataSet<TupleContext> finalPatterns = clusterCentroids.reduceGroup(new ClusterCentroids(parameters.similarityThreshold, parameters.minimalClusterSize)).name("Cluster the cluster centroids");
+
+        //finalPatterns.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
 
 	    //Search sentences for occurrences of the two entity tags
 	    //Returns: List of <tuple, context>
@@ -118,7 +124,7 @@ public class App {
 
         //######## Generate pattern confidences
 	    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
-	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegments.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold)).withBroadcastSet(finalPatterns, "finalPatterns").name("Find patterns that generated those tuples");
+	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegments.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold, finalPatterns.collect())).name("Find patterns that generated those tuples");
 
 	    //Join location from seed tuples onto the matched locations: <<organization, <pattern_id, matched_location>>, <organization, seedtuple_location>>
         DataSet<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations.joinWithTiny(seedTuples).where(0).equalTo(0).name("Join location from seed tuples onto candidate tuples");
@@ -143,6 +149,8 @@ public class App {
         //Reformat to <candidate tuple, <pattern_conf, similarity>>
         DataSet<Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>> candidateTuples = candidateTuplesWithPatternConfidences.map(new CandidateTupleSimplifier()).name("Reformat to <candidate tuple, <pattern_conf, similarity>>");
 
+        //candidateTuples.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
+        
         //Execute tuple confidence calculation: <organization, <location, tuple confidence>>
         DataSet<Tuple2<String, Tuple2<String, Double>>> candidateTupleconfidencesWithOrganizationAsKey = candidateTuples.groupBy(0).reduceGroup(new CandidateTupleConfidenceCalculator()).name("Calculate candidate tuple confidences and use organization as key");
 
@@ -155,43 +163,47 @@ public class App {
         //Store new seed tuples without their confidence: <organization, location>
         DataSet<Tuple2<String, String>> newSeedTuples = uniqueFilteredTuples.map(new SeedTuplesExtractor()).name("Store new seed tuples without their confidence");
 
+        //newSeedTuples.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
+        
         DataSet<Tuple2<String, String>> mergedSeedTuples = seedTuples.union(newSeedTuples).distinct().name("Merge new seed tuples into seed tuples");
+        
+        mergedSeedTuples.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
 
         DataSet<Tuple2<String, String>> countedMergedSeedTuples = mergedSeedTuples.map(new CountSeedTuples()).name("Count merged seed tuples");
 
-        DataSet<Tuple2<String, String>> resultingSeedTuples = seedTuples.closeWith(countedMergedSeedTuples);
+        //DataSet<Tuple2<String, String>> resultingSeedTuples = seedTuples.closeWith(countedMergedSeedTuples);
 
         //##################
         //#END OF ITERATION#
         //##################
 
         //System.out.println("Total tuples:" + resultingSeedTuples.count());
-        resultingSeedTuples.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
+        //resultingSeedTuples.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
 
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
         Integer lastSeedTuples = 15;
         try {
             JobExecutionResult results = env.execute("Snowball");
-            Integer i;
-            System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
-                    "new seed tuples => final seed tuples");
-            for (i = 1; i <= parameters.numberOfIterations; i++) {
-                String output = "Iteration " + i + ": " + results.getAccumulatorResult("numRawPatterns" + i) + " => " +
-                        results.getAccumulatorResult("numCentroids" + i) + " => " +
-                        results.getAccumulatorResult("numFinalPatterns" + i) + " => " +
-                        results.getAccumulatorResult("numCandidateTuples" + i) + " => " +
-                        ((Integer)results.getAccumulatorResult("numFinalSeedTuples" + i) - lastSeedTuples) + " => " +
-                        results.getAccumulatorResult("numFinalSeedTuples" + i);
-                System.out.println(output);
-                lastSeedTuples = results.getAccumulatorResult("numFinalSeedTuples" + i);
-            }
-            for (i = 1; i <= parameters.numberOfIterations; i++) {
-                System.out.println("Iteration " + i + " Histograms:");
-                System.out.println("Cluster Similarity: " + results.getAccumulatorResult("histClusterSimilarities" + i));
-                System.out.println("Match Similarity: " + results.getAccumulatorResult("histMatchSimilarities" + i));
-                System.out.println("Tuple Confidences: " + results.getAccumulatorResult("histTupleConfidences" + i));
-            }
+//            Integer i;
+//            System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
+//                    "new seed tuples => final seed tuples");
+//            for (i = 1; i <= parameters.numberOfIterations; i++) {
+//                String output = "Iteration " + i + ": " + results.getAccumulatorResult("numRawPatterns" + i) + " => " +
+//                        results.getAccumulatorResult("numCentroids" + i) + " => " +
+//                        results.getAccumulatorResult("numFinalPatterns" + i) + " => " +
+//                        results.getAccumulatorResult("numCandidateTuples" + i) + " => " +
+//                        ((Integer)results.getAccumulatorResult("numFinalSeedTuples" + i) - lastSeedTuples) + " => " +
+//                        results.getAccumulatorResult("numFinalSeedTuples" + i);
+//                System.out.println(output);
+//                lastSeedTuples = results.getAccumulatorResult("numFinalSeedTuples" + i);
+//            }
+//            for (i = 1; i <= parameters.numberOfIterations; i++) {
+//                System.out.println("Iteration " + i + " Histograms:");
+//                System.out.println("Cluster Similarity: " + results.getAccumulatorResult("histClusterSimilarities" + i));
+//                System.out.println("Match Similarity: " + results.getAccumulatorResult("histMatchSimilarities" + i));
+//                System.out.println("Tuple Confidences: " + results.getAccumulatorResult("histTupleConfidences" + i));
+//            }
         } finally {
             RemoteCollectorImpl.shutdownAll();
         }

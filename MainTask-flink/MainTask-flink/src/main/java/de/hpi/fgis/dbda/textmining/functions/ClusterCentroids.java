@@ -5,7 +5,6 @@ import java.util.List;
 
 import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.functions.GroupReduceFunction;
-import org.apache.flink.api.common.functions.RichGroupReduceFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.util.Collector;
@@ -14,22 +13,15 @@ import de.hpi.fgis.dbda.textmining.MainTask_flink.CentroidCalculator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.DegreeOfMatchCalculator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
 
-public class ClusterCentroids extends RichGroupReduceFunction<Tuple2<TupleContext, Integer>, TupleContext> {
+public class ClusterCentroids implements GroupReduceFunction<Tuple2<TupleContext, Integer>, TupleContext> {
 
     private double similarityThreshold;
     private int minimalClusterSize;
-    private IntCounter numFinalPatterns;
-
+    
     public ClusterCentroids(double similarityThreshold, int minimalClusterSize) {
         super();
         this.similarityThreshold = similarityThreshold;
         this.minimalClusterSize = minimalClusterSize;
-    }
-
-    @Override
-    public void open(Configuration parameters) throws Exception {
-        numFinalPatterns = new IntCounter();
-        getRuntimeContext().addAccumulator("numFinalPatterns" + getIterationRuntimeContext().getSuperstepNumber(), numFinalPatterns);
     }
 
     @Override
@@ -71,7 +63,6 @@ public class ClusterCentroids extends RichGroupReduceFunction<Tuple2<TupleContex
             //TODO: dynamic cluster size threshold
             if (cluster.f1 > minimalClusterSize) {
                 TupleContext centroid = CentroidCalculator.calculateCentroid(cluster.f0);
-                this.numFinalPatterns.add(1);
                 collector.collect(centroid);
             }
         }

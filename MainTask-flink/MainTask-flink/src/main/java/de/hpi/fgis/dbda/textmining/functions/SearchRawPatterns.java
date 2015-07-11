@@ -16,20 +16,13 @@ import de.hpi.fgis.dbda.textmining.MainTask_flink.ContextProducer;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.TokenListGenerator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
 
-public class SearchRawPatterns extends RichFlatMapFunction<Tuple2<Tuple2<String, String>, Tuple2<String, String>>, TupleContext> {
+public class SearchRawPatterns implements FlatMapFunction<Tuple2<Tuple2<String, String>, Tuple2<String, String>>, TupleContext> {
 
     private List<String> entities;
-	private IntCounter numRawPatterns;
 
     public SearchRawPatterns(List<String> entityTags) {
         super();
         this.entities = entityTags;
-    }
-
-    @Override
-    public void open(Configuration parameters) throws Exception {
-        numRawPatterns = new IntCounter();
-        getRuntimeContext().addAccumulator("numRawPatterns" + getIterationRuntimeContext().getSuperstepNumber(), numRawPatterns);
     }
 
 	@Override
@@ -76,7 +69,6 @@ public class SearchRawPatterns extends RichFlatMapFunction<Tuple2<Tuple2<String,
 					Map betweenContext = ContextProducer.produceContext(tokenList.subList(entity0site + 1, entity1site));
 					Map afterContext = ContextProducer.produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
 					TupleContext pattern = new TupleContext(beforeContext, this.entities.get(0), betweenContext, this.entities.get(1), afterContext);
-					this.numRawPatterns.add(1);
                     results.collect(pattern);
 				} else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
 					Map beforeContext = ContextProducer.produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
@@ -84,7 +76,6 @@ public class SearchRawPatterns extends RichFlatMapFunction<Tuple2<Tuple2<String,
 					Map afterContext = ContextProducer.produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
 					TupleContext pattern = new TupleContext(beforeContext, this.entities.get(1), betweenContext,	 this.entities.get(0), afterContext);
                     results.collect(pattern);
-                    this.numRawPatterns.add(1);
 				}
 			}
 		}

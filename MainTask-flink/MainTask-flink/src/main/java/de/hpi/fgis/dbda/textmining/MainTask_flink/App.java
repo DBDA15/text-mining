@@ -158,7 +158,7 @@ public class App {
         DataSet<Tuple2<String, Tuple2<String, Double>>> filteredTuples = candidateTupleconfidencesWithOrganizationAsKey.filter(new CandidateTupleConfidenceFilter(parameters.tupleConfidenceThreshold)).name("Filter candidate tuples by their confidence");
 
         //Filter candidate tuples by organization, choosing highest confidence: <organization, <location, tuple confidence>>
-        DataSet<Tuple2<String, Tuple2<String, Double>>> uniqueFilteredTuples = filteredTuples.groupBy(0).reduce(new UniqueOrganizationReducer()).name("Choose unique location for each organization based on highest confidence");
+        DataSet<Tuple2<String, Tuple2<String, Double>>> uniqueFilteredTuples = filteredTuples.groupBy(0).reduceGroup(new UniqueOrganizationReducer()).name("Choose unique location for each organization based on highest confidence");
 
         //Store new seed tuples without their confidence: <organization, location>
         DataSet<Tuple2<String, String>> newSeedTuples = uniqueFilteredTuples.map(new SeedTuplesExtractor()).name("Store new seed tuples without their confidence");

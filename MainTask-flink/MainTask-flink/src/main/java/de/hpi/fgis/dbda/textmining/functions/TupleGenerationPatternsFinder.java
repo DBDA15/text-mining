@@ -2,8 +2,7 @@ package de.hpi.fgis.dbda.textmining.functions;
 
 import java.util.List;
 
-import org.apache.flink.api.common.accumulators.Histogram;
-import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
@@ -13,16 +12,20 @@ import de.hpi.fgis.dbda.textmining.MainTask_flink.DegreeOfMatchCalculator;
 import de.hpi.fgis.dbda.textmining.MainTask_flink.TupleContext;
 
 @ForwardedFields("f0.f0->f0; f0.f1->f1.f1")
-public class TupleGenerationPatternsFinder implements FlatMapFunction<Tuple2<Tuple2<String, String>, TupleContext>, Tuple2<String, Tuple2<Integer, String>>> {
+public class TupleGenerationPatternsFinder extends RichFlatMapFunction<Tuple2<Tuple2<String, String>, TupleContext>, Tuple2<String, Tuple2<Integer, String>>> {
 
 	private double degreeOfMatchThreshold;
 	private List<TupleContext> finalPatterns;
 	
-	public TupleGenerationPatternsFinder(double degreeOfMatchThreshold, List<TupleContext> finalPatterns) {
+	public TupleGenerationPatternsFinder(double degreeOfMatchThreshold) {
 		super();
 		this.degreeOfMatchThreshold = degreeOfMatchThreshold;
-		this.finalPatterns = finalPatterns;
 	}
+	
+	@Override
+    public void open(Configuration parameters) throws Exception {
+        this.finalPatterns = getRuntimeContext().getBroadcastVariable("finalPatterns");
+    }
 
 	@Override
 	public void flatMap(Tuple2<Tuple2<String, String>, TupleContext> textSegment,

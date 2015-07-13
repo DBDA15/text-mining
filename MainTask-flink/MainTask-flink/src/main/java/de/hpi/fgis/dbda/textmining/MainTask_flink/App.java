@@ -75,13 +75,11 @@ public class App {
 
 		}
 		
-		DataSet<String> taggedSentences = allLines;
-		
 		DataSet<String> cleanSentences = allLines.map(new ReplaceNewLines()).name("Replacing new lines");
 			
 		DataSet<String> splittedSentences = cleanSentences.flatMap(new SplitSentences()).name("Splitting sentences");
 			
-		taggedSentences = splittedSentences.map(new TagSentences()).name("NER-Tagging sentences");
+		DataSet<String> taggedSentences = splittedSentences.map(new TagSentences()).name("NER-Tagging sentences");
 		
 		taggedSentences.writeAsText(parameters.output, FileSystem.WriteMode.OVERWRITE);
 		

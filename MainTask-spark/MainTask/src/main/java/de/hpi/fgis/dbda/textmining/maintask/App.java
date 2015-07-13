@@ -355,6 +355,8 @@ public class App
         	}
 
             assert lineItems != null;
+            
+            long numberOfSentences = lineItems.count();
 
             //Filter sentences: retain only those that contain both entity tags: <sentence>
             JavaRDD<String> sentencesWithTags = lineItems.filter(new Function<String, Boolean>() {
@@ -807,7 +809,9 @@ public class App
 
             }
             
-            seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples");
+            //seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples");
+                        
+            System.out.println("Number of sentences: " + numberOfSentences);
             
             System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
                     "new seed tuples => final seed tuples");

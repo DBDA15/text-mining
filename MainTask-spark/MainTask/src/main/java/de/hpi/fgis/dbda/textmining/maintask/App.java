@@ -54,7 +54,7 @@ public class App
         	
         	//Read sentences
             JavaRDD<String> lineItems = null;
-        	for (int i = 2; i < args.length; i++) {
+        	for (int i = 1; i < args.length; i++) {
         		if (lineItems == null) {
         			lineItems = context.textFile(args[i]);
         		}

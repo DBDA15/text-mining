@@ -356,486 +356,486 @@ public class App
 
             assert lineItems != null;
             
-            long numberOfSentences = lineItems.count();
-
-            //Filter sentences: retain only those that contain both entity tags: <sentence>
-            JavaRDD<String> sentencesWithTags = lineItems.filter(new Function<String, Boolean>() {
-				
-				@Override
-				public Boolean call(String v1) throws Exception {
-					return v1.contains(task_entityTags.get(0)) && v1.contains(task_entityTags.get(1));
-				}
-			});
-
-            //Generate a mapping <organization, sentence>
-            JavaPairRDD<String, String> organizationSentenceTuples = sentencesWithTags
-                    .flatMapToPair(new PairFlatMapFunction<String, String, String>() {
-
-                        @Override
-                        public Iterable<Tuple2<String, String>> call(String sentence)
-                                throws Exception {
-                            List<Tuple2<String, String>> keyList = new ArrayList();
-                            Pattern NERTagPattern = Pattern.compile("<ORGANIZATION>(.+?)</ORGANIZATION>");
-                            Matcher NERMatcher = NERTagPattern.matcher(sentence);
-                            while (NERMatcher.find()) {
-                                keyList.add(new Tuple2(NERMatcher.group(1), sentence));
-                            }
-                            return keyList;
-                        }
-                    });
-            
-            organizationSentenceTuples.persist(StorageLevel.MEMORY_ONLY());
-
-            //Read the seed tuples as pairs: <organization, location>
-            JavaPairRDD<String, String> seedTuples = context.textFile(args[1])
-            		.mapToPair(new PairFunction<String, String, String>() {
-
-						@Override
-						public Tuple2<String, String> call(String t)
-								throws Exception {
-							SeedTuple st = new SeedTuple(t);
-							return new Tuple2<String, String>(st.ORGANIZATION, st.LOCATION);
-						}
-					});
-
-            System.out.println("#########################");
-            System.out.println("#Finished initialization#");
-            System.out.println("#########################");
-
-            Integer currentIteration = 1;
-            List<Result> resultList = new ArrayList<Result>();
-
-            while (currentIteration <= numberOfIterations) {
-            	long iterationTime = Time.now();
-            	Result result = new Result();
-            	result.iterationNumber = currentIteration;
-                currentIteration += 1;
-                System.out.println("#########################");
-                System.out.println("####Begin iteration " + currentIteration + "####");
-                System.out.println("#########################");
-
-                //Retain only those sentences with a organization from the seed tuples: <organization, <sentence, location>>
-                JavaPairRDD<String, Tuple2<String, String>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples);
-
-                //Search the sentences for raw patterns
-                JavaRDD<TupleContext> rawPatterns = organizationKeyListJoined
-                        .flatMap(new FlatMapFunction<Tuple2<String, Tuple2<String, String>>, TupleContext>() {
-
-                            @Override
-                            public Iterable<TupleContext> call(
-                                    Tuple2<String, Tuple2<String, String>> t)
-                                    throws Exception {
-
-                                String seedTupleOrg = t._1();
-                                String sentence = t._2()._1();
-                                String seedTupleLocation = t._2()._2();
-
-                                List<Tuple2> tokenList = generateTokenList(sentence);
-
-	                            /*
-	                            Now, the token list look like this:
-	                            <"Goldman Sachs", "ORGANIZATION">
-	                            <"is", "">
-	                            <"headquarted", "">
-	                            <"in", "">
-	                            <"New York City", "LOCATION"
-	                            */
-
-                                List patterns = new ArrayList();
-
-                                //Take note of where A and B appeared in the sentence (and with the right NER tags)
-                                List<Integer> entity0sites = new ArrayList<Integer>();
-                                List<Integer> entity1sites = new ArrayList<Integer>();
-                                Integer tokenIndex = 0;
-                                for (Tuple2<String, String> wordEntity : tokenList) {
-                                    String word = wordEntity._1();
-                                    String entity = wordEntity._2();
-
-                                    if (word.equals(seedTupleOrg) && entity.equals(task_entityTags.get(0))) {
-                                        entity0sites.add(tokenIndex);
-                                    } else if (word.equals(seedTupleLocation) && entity.equals(task_entityTags.get(1))) {
-                                        entity1sites.add(tokenIndex);
-                                    }
-                                    tokenIndex++;
-                                }
-
-                                //For each pair of A and B in the sentence, generate a pattern and add it to the list
-                                for (Integer entity0site : entity0sites) {
-                                    for (Integer entity1site : entity1sites) {
-                                        Integer windowSize = 5;
-                                        Integer maxDistance = 5;
-                                        if (entity0site < entity1site && (entity1site - entity0site) <= maxDistance) {
-                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
-                                            Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
-                                            Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
-                                            TupleContext pattern = new TupleContext(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext);
-                                            patterns.add(pattern);
-                                        } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
-                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
-                                            Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
-                                            Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
-                                            TupleContext pattern = new TupleContext(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext);
-                                            patterns.add(pattern);
-                                        }
-                                    }
-                                }
-                                return patterns;
-                            }
-                        });
-                
-                long rawPatternsTime = Time.now();
-                result.rawPatternsTime = (rawPatternsTime - iterationTime);
-                result.rawPatterns = rawPatterns.count();
-
-                //Cluster the raw patterns in a partition
-                JavaRDD<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartitions(new FlatMapFunction<java.util.Iterator<TupleContext>, Tuple2<TupleContext, Integer>>() {
-                    @Override
-                    public Iterable<Tuple2<TupleContext, Integer>> call(java.util.Iterator<TupleContext> rawPatterns) throws Exception {
-						List<List> clusters = new ArrayList<>();
-						while(rawPatterns.hasNext()) {
-							TupleContext pattern = rawPatterns.next();
-				            if (clusters.isEmpty()) {
-				                List<TupleContext> newCluster = new ArrayList<>();
-				                newCluster.add(pattern);
-				                clusters.add(newCluster);
-				            } else {
-				                Integer clusterIndex = 0;
-				                Integer nearestCluster = null;
-				                Float greatestSimilarity = 0.0f;
-				                for (List<TupleContext> cluster : clusters) {
-				                    Float similarity = calculateDegreeOfMatchWithCluster(pattern, cluster);
-				                    if (similarity > greatestSimilarity) {
-				                        nearestCluster = clusterIndex;
-				                        greatestSimilarity = similarity;
-				                    }
-				                    clusterIndex++;
-				                }
-
-				                if (greatestSimilarity > similarityThreshold) {
-				                    clusters.get(nearestCluster).add(pattern);
-				                } else {
-				                    List<TupleContext> separateCluster = new ArrayList<>();
-				                    separateCluster.add(pattern);
-				                    clusters.add(separateCluster);
-				                }
-				            }
-				        }
-						List<Tuple2<TupleContext, Integer>> centroidList = new ArrayList<Tuple2<TupleContext, Integer>>();
-				        for (List<TupleContext> cluster : clusters) {
-				            //TODO: dynamic cluster size threshold
-				            TupleContext centroid = calculateCentroid(cluster);
-				            centroidList.add(new Tuple2(centroid, cluster.size()));
-				        }
-				        return centroidList;
-					}
-				});
-                
-                long centroidsTime = Time.now();
-                result.centroidsTime = (centroidsTime - rawPatternsTime);
-
-                //Collect all raw patterns on the driver
-                List<Tuple2<TupleContext, Integer>> patternList = clusterCentroids
-                        .collect();
-                
-                result.centroids = patternList.size();
-
-                final List<TupleContext> finalPatterns = calculateClusterCentroids(patternList);
-                
-                long finalPatternsTime = Time.now();
-                result.finalPatternsTime = (finalPatternsTime - centroidsTime);
-                
-                result.finalPatterns = finalPatterns.size();
-
-                //System.out.println(patterns);
-
-                //Search sentences for occurrences of the two entity tags
-                //Returns: List of <tuple, context>
-                JavaRDD<Tuple2<Tuple2, TupleContext>> textSegments = sentencesWithTags
-                        .flatMap(new FlatMapFunction<String, Tuple2<Tuple2, TupleContext>>() {
-                            @Override
-                            public Iterable<Tuple2<Tuple2, TupleContext>> call(String sentence) throws Exception {
-
-                                List<Tuple2> tokenList = generateTokenList(sentence);
-
-                                List<Integer> entity0sites = new ArrayList<Integer>();
-                                List<Integer> entity1sites = new ArrayList<Integer>();
-                                Integer tokenIndex = 0;
-                                for (Tuple2<String, String> wordEntity : tokenList) {
-                                    String entity = wordEntity._2();
-
-                                    if (entity.equals(task_entityTags.get(0))) {
-                                        entity0sites.add(tokenIndex);
-                                    } else if (entity.equals(task_entityTags.get(1))) {
-                                        entity1sites.add(tokenIndex);
-                                    }
-                                    tokenIndex++;
-                                }
-
-                                //For each pair of A and B in the sentence, generate a text segment and add it to the list
-                                List<Tuple2<Tuple2, TupleContext>> textSegmentList = new ArrayList<>();
-                                for (Integer entity0site : entity0sites) {
-                                    for (Integer entity1site : entity1sites) {
-
-                                        if (entity0site < entity1site && (entity1site - entity0site) <= maxDistance) {
-                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
-                                            Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
-                                            Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
-                                            textSegmentList.add(new Tuple2(new Tuple2(tokenList.get(entity0site)._1(), tokenList.get(entity1site)._1()), new TupleContext(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
-                                        } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
-                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
-                                            Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
-                                            Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
-                                            textSegmentList.add(new Tuple2(new Tuple2(tokenList.get(entity0site)._1(), tokenList.get(entity1site)._1()), new TupleContext(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
-                                        }
-                                    }
-                                }
-                                return textSegmentList;
-                            }
-                        });
-
-                textSegments.persist(StorageLevel.MEMORY_ONLY());
-                //textSegments.saveAsTextFile(outputDirectory + "/textsegments");
-
-                //######## Generate pattern confidences
-                //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
-                JavaPairRDD<String, Tuple2<Integer, String>> organizationsWithMatchedLocations = textSegments
-                        .flatMapToPair(new PairFlatMapFunction<Tuple2<Tuple2, TupleContext>, String, Tuple2<Integer, String>>() {
-                            @Override
-                            public Iterable<Tuple2<String, Tuple2<Integer, String>>> call(Tuple2<Tuple2, TupleContext> textSegment) throws Exception {
-
-                                //Algorithm from figure 4
-                                List<Tuple2<String, Tuple2<Integer, String>>> generatedTuples = new ArrayList();
-                                TupleContext tupleContext = textSegment._2();
-
-                                Integer patternIndex = 0;
-                                while (patternIndex < finalPatterns.size()) {
-                                    TupleContext pattern = finalPatterns.get(patternIndex);
-                                    float similarity = calculateDegreeOfMatch(tupleContext, pattern);
-                                    if (similarity >= degreeOfMatchThreshold) {
-                                        generatedTuples.add(new Tuple2(textSegment._1()._1(), new Tuple2(patternIndex, textSegment._1()._2())));
-                                    }
-                                    patternIndex++;
-                                }
-
-                                return generatedTuples;
-                            }
-                        });
-
-                //Join location from seed tuples onto the matched locations: <organization, <<pattern_id, matched_location>, seedtuple_location>>
-                JavaPairRDD<String, Tuple2<Tuple2<Integer, String>, String>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations
-                        .join(seedTuples);
-
-                //Return counts of positives and negatives depending on whether matched location equals seed tuple location: <pattern_id, <#positives, #negatives>>
-                JavaPairRDD<Integer, Tuple2<Integer, Integer>> patternsWithPositiveAndNegatives = organizationsWithMatchedAndCorrectLocation
-                        .mapToPair(new PairFunction<Tuple2<String, Tuple2<Tuple2<Integer, String>, String>>, Integer, Tuple2<Integer, Integer>>() {
-                            @Override
-                            public Tuple2<Integer, Tuple2<Integer, Integer>> call(Tuple2<String, Tuple2<Tuple2<Integer, String>, String>> organizationWithMatchedAndCorrectLocation) throws Exception {
-                                Integer patternID = organizationWithMatchedAndCorrectLocation._2()._1()._1();
-                                String matchedLocation = organizationWithMatchedAndCorrectLocation._2()._1()._2();
-                                String correctLocation = organizationWithMatchedAndCorrectLocation._2()._2();
-                                if (matchedLocation.equals(correctLocation)) {
-                                    return new Tuple2(patternID, new Tuple2<>(1, 0));
-                                } else {
-                                    return new Tuple2(patternID, new Tuple2<>(0, 1));
-                                }
-                            }
-                        });
-
-                //Sum up counts of positives and negatives for each pattern id: <pattern_id, <#positives, #negatives>>
-                JavaPairRDD<Integer, Tuple2<Integer, Integer>> patternsWithSummedUpPositiveAndNegatives = patternsWithPositiveAndNegatives
-                        .reduceByKey(new Function2<Tuple2<Integer, Integer>, Tuple2<Integer, Integer>, Tuple2<Integer, Integer>>() {
-                            @Override
-                            public Tuple2<Integer, Integer> call(Tuple2<Integer, Integer> posNeg1, Tuple2<Integer, Integer> posNeg2) throws Exception {
-                                Integer sumOfPositives = posNeg1._1() + posNeg2._1();
-                                Integer sumOfNegatives = posNeg1._2() + posNeg2._2();
-                                return new Tuple2(sumOfPositives, sumOfNegatives);
-                            }
-                        });
-
-                //Calculate pattern confidence: <pattern_id, confidence>
-                JavaPairRDD<Integer, Float> patternConfidences = patternsWithSummedUpPositiveAndNegatives
-                        .mapToPair(new PairFunction<Tuple2<Integer, Tuple2<Integer, Integer>>, Integer, Float>() {
-                            @Override
-                            public Tuple2<Integer, Float> call(Tuple2<Integer, Tuple2<Integer, Integer>> patternWithSummedUpPositiveAndNegatives) throws Exception {
-                                Integer patternID = patternWithSummedUpPositiveAndNegatives._1();
-                                Integer positives = patternWithSummedUpPositiveAndNegatives._2()._1();
-                                Integer negatives = patternWithSummedUpPositiveAndNegatives._2()._2();
-                                Float confidence = (float) positives / (positives + negatives);
-                                return new Tuple2(patternID, confidence);
-                            }
-                        });
-
-                //patternConfidences.saveAsTextFile(outputDirectory + "/patternconfidences");
-
-                //######## Find occurences of patterns in text
-                //Compile candidate tuple list: <pattern, <candidate tuple, similarity>>
-                JavaPairRDD<Integer, Tuple2<Tuple2, Float>> patternsWithTuples = textSegments
-                        .flatMapToPair(new PairFlatMapFunction<Tuple2<Tuple2, TupleContext>, Integer, Tuple2<Tuple2, Float>>() {
-                            @Override
-                            public Iterable<Tuple2<Integer, Tuple2<Tuple2, Float>>> call(Tuple2<Tuple2, TupleContext> textSegment) throws Exception {
-
-                                //Algorithm from figure 4
-                                //
-                                List<Tuple2<Integer, Tuple2<Tuple2, Float>>> candidateTuplesWithPatternAndSimilarity = new ArrayList();
-
-                                Tuple2<String, String> candidateTuple = textSegment._1();
-                                TupleContext tupleContext = textSegment._2();
-
-                                Integer bestPattern = null;
-                                float bestSimilarity = 0.0f;
-                                Integer patternIndex = 0;
-                                while (patternIndex < finalPatterns.size()) {
-                                    TupleContext pattern = finalPatterns.get(patternIndex);
-                                    float similarity = calculateDegreeOfMatch(tupleContext, pattern);
-                                    if (similarity >= degreeOfMatchThreshold) {
-                                        if (similarity > bestSimilarity) {
-                                            bestSimilarity = similarity;
-                                            bestPattern = patternIndex;
-                                        }
-                                    }
-                                    patternIndex++;
-                                }
-                                if (bestSimilarity >= degreeOfMatchThreshold) {
-                                    candidateTuplesWithPatternAndSimilarity.add(new Tuple2(bestPattern, new Tuple2(candidateTuple, bestSimilarity)));
-                                }
-                                return candidateTuplesWithPatternAndSimilarity;
-                            }
-                        });
-
-                //patternsWithTuples.saveAsTextFile(outputDirectory + "/patternsWithTuples" + currentIteration);
-
-                //######## Make candidate tuples
-                //Join candidate tuples with pattern confidences: <pattern_id, <<candidate tuple, similarity>, pattern_conf>>
-                JavaPairRDD<Integer, Tuple2<Tuple2<Tuple2, Float>, Float>> candidateTuplesWithPatternConfidences =
-                        patternsWithTuples.join(patternConfidences);
-
-                //Reformat to <candidate tuple, <pattern_conf, similarity>>
-                JavaPairRDD<Tuple2, Tuple2<Float, Float>> candidateTuples = candidateTuplesWithPatternConfidences
-                        .mapToPair(new PairFunction<Tuple2<Integer, Tuple2<Tuple2<Tuple2, Float>, Float>>, Tuple2, Tuple2<Float, Float>>() {
-                            @Override
-                            public Tuple2<Tuple2, Tuple2<Float, Float>> call(Tuple2<Integer, Tuple2<Tuple2<Tuple2, Float>, Float>> foo) throws Exception {
-                                Tuple2 candidateTuple = foo._2()._1()._1();
-                                Float patternConf = foo._2()._2();
-                                Float similarity = foo._2()._1()._2();
-                                return new Tuple2(candidateTuple, new Tuple2(patternConf, similarity));
-                            }
-                        });
-                
-                long candidateTuplesTime = Time.now();
-                result.candidateTuplesTime = (candidateTuplesTime - finalPatternsTime);
-                result.candidateTuples = candidateTuples.count();
-
-                //Execute first step of tuple confidence calculation
-                JavaPairRDD<Tuple2, Float> confidenceSubtrahend = candidateTuples
-                        .combineByKey(
-                                new Function<Tuple2<Float, Float>, Float>() {
-                                    @Override
-                                    public Float call(Tuple2<Float, Float> patternMatch) throws Exception {
-                                        return 1.0f - (patternMatch._1() * patternMatch._2());
-                                    }
-                                },
-                                new Function2<Float, Tuple2<Float, Float>, Float>() {
-                                    @Override
-                                    public Float call(Float currentValue, Tuple2<Float, Float> patternMatch) throws Exception {
-                                        return currentValue * (1.0f - (patternMatch._1() * patternMatch._2()));
-                                    }
-                                }, new Function2<Float, Float, Float>() {
-                                    @Override
-                                    public Float call(Float value1, Float value2) throws Exception {
-                                        return value1 * value2;
-                                    }
-                                });
-
-                //Finish tuple confidence calculation, with organization as key: <organization, <location, tuple confidence>>
-                JavaPairRDD<String, Tuple2<String, Float>> candidateTupleconfidencesWithOrganizationAsKey = confidenceSubtrahend
-                        .mapToPair(new PairFunction<Tuple2<Tuple2, Float>, String, Tuple2<String, Float>>() {
-                            @Override
-                            public Tuple2<String, Tuple2<String, Float>> call(Tuple2<Tuple2, Float> tupleAndSubtrahend) throws Exception {
-                                String organization = (String) tupleAndSubtrahend._1()._1();
-                                String location = (String) tupleAndSubtrahend._1()._2();
-                                Float subtrahend = tupleAndSubtrahend._2();
-                                return new Tuple2(organization, new Tuple2(location, 1.0f - subtrahend));
-                            }
-                        });
-
-                //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>
-                JavaPairRDD<String, Tuple2<String, Float>> filteredTuples = candidateTupleconfidencesWithOrganizationAsKey
-                        .filter(new Function<Tuple2<String, Tuple2<String, Float>>, Boolean>() {
-                            @Override
-                            public Boolean call(Tuple2<String, Tuple2<String, Float>> tupleWithConfidence) throws Exception {
-                                Float confidence = tupleWithConfidence._2()._2();
-                                if (confidence > tupleConfidenceThreshold) {
-                                    return true;
-                                } else {
-                                    return false;
-                                }
-                            }
-                        });
-
-                //Filter candidate tuples by organization, choosing highest confidence: <organization, <location, tuple confidence>>
-                JavaPairRDD<String, Tuple2<String, Float>> uniqueFilteredTuples = filteredTuples
-                        .reduceByKey(new Function2<Tuple2<String, Float>, Tuple2<String, Float>, Tuple2<String, Float>>() {
-                            @Override
-                            public Tuple2 call(Tuple2<String, Float> v1, Tuple2<String, Float> v2) throws Exception {
-                                return v1._2() > v2._2() ? v1 : v2;
-                            }
-                        });
-
-                //Store new seed tuples without their confidence: <organization, location>
-                JavaPairRDD<String, String> newSeedTuples = uniqueFilteredTuples
-                        .mapToPair(new PairFunction<Tuple2<String, Tuple2<String, Float>>, String, String>() {
-
-                            @Override
-                            public Tuple2<String, String> call(Tuple2<String, Tuple2<String, Float>> t) throws Exception {
-                                String organization = t._1();
-                                String location = t._2()._1();
-                                return new Tuple2(organization, location);
-                            }
-                        });
-                
-
-                long newSeedTuplesTime = Time.now();
-                result.newSeedTuplesTime = (newSeedTuplesTime - candidateTuplesTime);
-                result.newSeedTuples = newSeedTuples.count();
-
-                //Add new seed tuples to the old ones
-                seedTuples = seedTuples.union(newSeedTuples).distinct();
-                
-                long totalSeedTuplesTime = Time.now();
-                result.totalSeedTuplesTime = (totalSeedTuplesTime - newSeedTuplesTime);
-                result.totalSeedTuples = seedTuples.count();
-
-                resultList.add(result);
-
-            }
-            
-            //seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples");
-                        
-            System.out.println("Number of sentences: " + numberOfSentences);
-            
-            System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
-                    "new seed tuples => final seed tuples");
-            for (Result r : resultList) {
-            	String output = "Iteration " + r.iterationNumber + ": " + r.rawPatterns + " => " +
-                        r.centroids + " => " +
-                        r.finalPatterns + " => " +
-                        r.candidateTuples + " => " +
-                        r.newSeedTuples + " => " +
-                        r.totalSeedTuples;
-                System.out.println(output);
-            	String outputTime = "Times " + r.iterationNumber + ": " + (r.rawPatternsTime/1000.0f) + "s => " +
-                        (r.centroidsTime/1000.0f) + " s => " +
-                        (r.finalPatternsTime/1000.0f) + " s => " +
-                        (r.candidateTuplesTime/1000.0f) + " s => " +
-                        (r.newSeedTuplesTime/1000.0f) + " s => " +
-                        (r.totalSeedTuplesTime/1000.0f) + " s";
-                System.out.println(outputTime);
-            }
-            long endTime = Time.now();
-            System.out.println("Finished!");
-            System.out.println("It took: " + ((endTime - startTime)/1000.0f) + " seconds.");
+            System.out.println("Number of sentences: " + lineItems.count());
+           
+//            
+//            //Filter sentences: retain only those that contain both entity tags: <sentence>
+//            JavaRDD<String> sentencesWithTags = lineItems.filter(new Function<String, Boolean>() {
+//				
+//				@Override
+//				public Boolean call(String v1) throws Exception {
+//					return v1.contains(task_entityTags.get(0)) && v1.contains(task_entityTags.get(1));
+//				}
+//			});
+//
+//            //Generate a mapping <organization, sentence>
+//            JavaPairRDD<String, String> organizationSentenceTuples = sentencesWithTags
+//                    .flatMapToPair(new PairFlatMapFunction<String, String, String>() {
+//
+//                        @Override
+//                        public Iterable<Tuple2<String, String>> call(String sentence)
+//                                throws Exception {
+//                            List<Tuple2<String, String>> keyList = new ArrayList();
+//                            Pattern NERTagPattern = Pattern.compile("<ORGANIZATION>(.+?)</ORGANIZATION>");
+//                            Matcher NERMatcher = NERTagPattern.matcher(sentence);
+//                            while (NERMatcher.find()) {
+//                                keyList.add(new Tuple2(NERMatcher.group(1), sentence));
+//                            }
+//                            return keyList;
+//                        }
+//                    });
+//            
+//            organizationSentenceTuples.persist(StorageLevel.MEMORY_ONLY());
+//
+//            //Read the seed tuples as pairs: <organization, location>
+//            JavaPairRDD<String, String> seedTuples = context.textFile(args[1])
+//            		.mapToPair(new PairFunction<String, String, String>() {
+//
+//						@Override
+//						public Tuple2<String, String> call(String t)
+//								throws Exception {
+//							SeedTuple st = new SeedTuple(t);
+//							return new Tuple2<String, String>(st.ORGANIZATION, st.LOCATION);
+//						}
+//					});
+//
+//            System.out.println("#########################");
+//            System.out.println("#Finished initialization#");
+//            System.out.println("#########################");
+//
+//            Integer currentIteration = 1;
+//            List<Result> resultList = new ArrayList<Result>();
+//
+//            while (currentIteration <= numberOfIterations) {
+//            	long iterationTime = Time.now();
+//            	Result result = new Result();
+//            	result.iterationNumber = currentIteration;
+//                currentIteration += 1;
+//                System.out.println("#########################");
+//                System.out.println("####Begin iteration " + currentIteration + "####");
+//                System.out.println("#########################");
+//
+//                //Retain only those sentences with a organization from the seed tuples: <organization, <sentence, location>>
+//                JavaPairRDD<String, Tuple2<String, String>> organizationKeyListJoined = organizationSentenceTuples.join(seedTuples);
+//
+//                //Search the sentences for raw patterns
+//                JavaRDD<TupleContext> rawPatterns = organizationKeyListJoined
+//                        .flatMap(new FlatMapFunction<Tuple2<String, Tuple2<String, String>>, TupleContext>() {
+//
+//                            @Override
+//                            public Iterable<TupleContext> call(
+//                                    Tuple2<String, Tuple2<String, String>> t)
+//                                    throws Exception {
+//
+//                                String seedTupleOrg = t._1();
+//                                String sentence = t._2()._1();
+//                                String seedTupleLocation = t._2()._2();
+//
+//                                List<Tuple2> tokenList = generateTokenList(sentence);
+//
+//	                            /*
+//	                            Now, the token list look like this:
+//	                            <"Goldman Sachs", "ORGANIZATION">
+//	                            <"is", "">
+//	                            <"headquarted", "">
+//	                            <"in", "">
+//	                            <"New York City", "LOCATION"
+//	                            */
+//
+//                                List patterns = new ArrayList();
+//
+//                                //Take note of where A and B appeared in the sentence (and with the right NER tags)
+//                                List<Integer> entity0sites = new ArrayList<Integer>();
+//                                List<Integer> entity1sites = new ArrayList<Integer>();
+//                                Integer tokenIndex = 0;
+//                                for (Tuple2<String, String> wordEntity : tokenList) {
+//                                    String word = wordEntity._1();
+//                                    String entity = wordEntity._2();
+//
+//                                    if (word.equals(seedTupleOrg) && entity.equals(task_entityTags.get(0))) {
+//                                        entity0sites.add(tokenIndex);
+//                                    } else if (word.equals(seedTupleLocation) && entity.equals(task_entityTags.get(1))) {
+//                                        entity1sites.add(tokenIndex);
+//                                    }
+//                                    tokenIndex++;
+//                                }
+//
+//                                //For each pair of A and B in the sentence, generate a pattern and add it to the list
+//                                for (Integer entity0site : entity0sites) {
+//                                    for (Integer entity1site : entity1sites) {
+//                                        Integer windowSize = 5;
+//                                        Integer maxDistance = 5;
+//                                        if (entity0site < entity1site && (entity1site - entity0site) <= maxDistance) {
+//                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
+//                                            Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
+//                                            Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
+//                                            TupleContext pattern = new TupleContext(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext);
+//                                            patterns.add(pattern);
+//                                        } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
+//                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
+//                                            Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
+//                                            Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
+//                                            TupleContext pattern = new TupleContext(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext);
+//                                            patterns.add(pattern);
+//                                        }
+//                                    }
+//                                }
+//                                return patterns;
+//                            }
+//                        });
+//                
+//                long rawPatternsTime = Time.now();
+//                result.rawPatternsTime = (rawPatternsTime - iterationTime);
+//                result.rawPatterns = rawPatterns.count();
+//
+//                //Cluster the raw patterns in a partition
+//                JavaRDD<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartitions(new FlatMapFunction<java.util.Iterator<TupleContext>, Tuple2<TupleContext, Integer>>() {
+//                    @Override
+//                    public Iterable<Tuple2<TupleContext, Integer>> call(java.util.Iterator<TupleContext> rawPatterns) throws Exception {
+//						List<List> clusters = new ArrayList<>();
+//						while(rawPatterns.hasNext()) {
+//							TupleContext pattern = rawPatterns.next();
+//				            if (clusters.isEmpty()) {
+//				                List<TupleContext> newCluster = new ArrayList<>();
+//				                newCluster.add(pattern);
+//				                clusters.add(newCluster);
+//				            } else {
+//				                Integer clusterIndex = 0;
+//				                Integer nearestCluster = null;
+//				                Float greatestSimilarity = 0.0f;
+//				                for (List<TupleContext> cluster : clusters) {
+//				                    Float similarity = calculateDegreeOfMatchWithCluster(pattern, cluster);
+//				                    if (similarity > greatestSimilarity) {
+//				                        nearestCluster = clusterIndex;
+//				                        greatestSimilarity = similarity;
+//				                    }
+//				                    clusterIndex++;
+//				                }
+//
+//				                if (greatestSimilarity > similarityThreshold) {
+//				                    clusters.get(nearestCluster).add(pattern);
+//				                } else {
+//				                    List<TupleContext> separateCluster = new ArrayList<>();
+//				                    separateCluster.add(pattern);
+//				                    clusters.add(separateCluster);
+//				                }
+//				            }
+//				        }
+//						List<Tuple2<TupleContext, Integer>> centroidList = new ArrayList<Tuple2<TupleContext, Integer>>();
+//				        for (List<TupleContext> cluster : clusters) {
+//				            //TODO: dynamic cluster size threshold
+//				            TupleContext centroid = calculateCentroid(cluster);
+//				            centroidList.add(new Tuple2(centroid, cluster.size()));
+//				        }
+//				        return centroidList;
+//					}
+//				});
+//                
+//                long centroidsTime = Time.now();
+//                result.centroidsTime = (centroidsTime - rawPatternsTime);
+//
+//                //Collect all raw patterns on the driver
+//                List<Tuple2<TupleContext, Integer>> patternList = clusterCentroids
+//                        .collect();
+//                
+//                result.centroids = patternList.size();
+//
+//                final List<TupleContext> finalPatterns = calculateClusterCentroids(patternList);
+//                
+//                long finalPatternsTime = Time.now();
+//                result.finalPatternsTime = (finalPatternsTime - centroidsTime);
+//                
+//                result.finalPatterns = finalPatterns.size();
+//
+//                //System.out.println(patterns);
+//
+//                //Search sentences for occurrences of the two entity tags
+//                //Returns: List of <tuple, context>
+//                JavaRDD<Tuple2<Tuple2, TupleContext>> textSegments = sentencesWithTags
+//                        .flatMap(new FlatMapFunction<String, Tuple2<Tuple2, TupleContext>>() {
+//                            @Override
+//                            public Iterable<Tuple2<Tuple2, TupleContext>> call(String sentence) throws Exception {
+//
+//                                List<Tuple2> tokenList = generateTokenList(sentence);
+//
+//                                List<Integer> entity0sites = new ArrayList<Integer>();
+//                                List<Integer> entity1sites = new ArrayList<Integer>();
+//                                Integer tokenIndex = 0;
+//                                for (Tuple2<String, String> wordEntity : tokenList) {
+//                                    String entity = wordEntity._2();
+//
+//                                    if (entity.equals(task_entityTags.get(0))) {
+//                                        entity0sites.add(tokenIndex);
+//                                    } else if (entity.equals(task_entityTags.get(1))) {
+//                                        entity1sites.add(tokenIndex);
+//                                    }
+//                                    tokenIndex++;
+//                                }
+//
+//                                //For each pair of A and B in the sentence, generate a text segment and add it to the list
+//                                List<Tuple2<Tuple2, TupleContext>> textSegmentList = new ArrayList<>();
+//                                for (Integer entity0site : entity0sites) {
+//                                    for (Integer entity1site : entity1sites) {
+//
+//                                        if (entity0site < entity1site && (entity1site - entity0site) <= maxDistance) {
+//                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
+//                                            Map betweenContext = produceContext(tokenList.subList(entity0site + 1, entity1site));
+//                                            Map afterContext = produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
+//                                            textSegmentList.add(new Tuple2(new Tuple2(tokenList.get(entity0site)._1(), tokenList.get(entity1site)._1()), new TupleContext(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
+//                                        } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
+//                                            Map beforeContext = produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
+//                                            Map betweenContext = produceContext(tokenList.subList(entity1site + 1, entity0site));
+//                                            Map afterContext = produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
+//                                            textSegmentList.add(new Tuple2(new Tuple2(tokenList.get(entity0site)._1(), tokenList.get(entity1site)._1()), new TupleContext(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
+//                                        }
+//                                    }
+//                                }
+//                                return textSegmentList;
+//                            }
+//                        });
+//
+//                textSegments.persist(StorageLevel.MEMORY_ONLY());
+//                //textSegments.saveAsTextFile(outputDirectory + "/textsegments");
+//
+//                //######## Generate pattern confidences
+//                //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
+//                JavaPairRDD<String, Tuple2<Integer, String>> organizationsWithMatchedLocations = textSegments
+//                        .flatMapToPair(new PairFlatMapFunction<Tuple2<Tuple2, TupleContext>, String, Tuple2<Integer, String>>() {
+//                            @Override
+//                            public Iterable<Tuple2<String, Tuple2<Integer, String>>> call(Tuple2<Tuple2, TupleContext> textSegment) throws Exception {
+//
+//                                //Algorithm from figure 4
+//                                List<Tuple2<String, Tuple2<Integer, String>>> generatedTuples = new ArrayList();
+//                                TupleContext tupleContext = textSegment._2();
+//
+//                                Integer patternIndex = 0;
+//                                while (patternIndex < finalPatterns.size()) {
+//                                    TupleContext pattern = finalPatterns.get(patternIndex);
+//                                    float similarity = calculateDegreeOfMatch(tupleContext, pattern);
+//                                    if (similarity >= degreeOfMatchThreshold) {
+//                                        generatedTuples.add(new Tuple2(textSegment._1()._1(), new Tuple2(patternIndex, textSegment._1()._2())));
+//                                    }
+//                                    patternIndex++;
+//                                }
+//
+//                                return generatedTuples;
+//                            }
+//                        });
+//
+//                //Join location from seed tuples onto the matched locations: <organization, <<pattern_id, matched_location>, seedtuple_location>>
+//                JavaPairRDD<String, Tuple2<Tuple2<Integer, String>, String>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations
+//                        .join(seedTuples);
+//
+//                //Return counts of positives and negatives depending on whether matched location equals seed tuple location: <pattern_id, <#positives, #negatives>>
+//                JavaPairRDD<Integer, Tuple2<Integer, Integer>> patternsWithPositiveAndNegatives = organizationsWithMatchedAndCorrectLocation
+//                        .mapToPair(new PairFunction<Tuple2<String, Tuple2<Tuple2<Integer, String>, String>>, Integer, Tuple2<Integer, Integer>>() {
+//                            @Override
+//                            public Tuple2<Integer, Tuple2<Integer, Integer>> call(Tuple2<String, Tuple2<Tuple2<Integer, String>, String>> organizationWithMatchedAndCorrectLocation) throws Exception {
+//                                Integer patternID = organizationWithMatchedAndCorrectLocation._2()._1()._1();
+//                                String matchedLocation = organizationWithMatchedAndCorrectLocation._2()._1()._2();
+//                                String correctLocation = organizationWithMatchedAndCorrectLocation._2()._2();
+//                                if (matchedLocation.equals(correctLocation)) {
+//                                    return new Tuple2(patternID, new Tuple2<>(1, 0));
+//                                } else {
+//                                    return new Tuple2(patternID, new Tuple2<>(0, 1));
+//                                }
+//                            }
+//                        });
+//
+//                //Sum up counts of positives and negatives for each pattern id: <pattern_id, <#positives, #negatives>>
+//                JavaPairRDD<Integer, Tuple2<Integer, Integer>> patternsWithSummedUpPositiveAndNegatives = patternsWithPositiveAndNegatives
+//                        .reduceByKey(new Function2<Tuple2<Integer, Integer>, Tuple2<Integer, Integer>, Tuple2<Integer, Integer>>() {
+//                            @Override
+//                            public Tuple2<Integer, Integer> call(Tuple2<Integer, Integer> posNeg1, Tuple2<Integer, Integer> posNeg2) throws Exception {
+//                                Integer sumOfPositives = posNeg1._1() + posNeg2._1();
+//                                Integer sumOfNegatives = posNeg1._2() + posNeg2._2();
+//                                return new Tuple2(sumOfPositives, sumOfNegatives);
+//                            }
+//                        });
+//
+//                //Calculate pattern confidence: <pattern_id, confidence>
+//                JavaPairRDD<Integer, Float> patternConfidences = patternsWithSummedUpPositiveAndNegatives
+//                        .mapToPair(new PairFunction<Tuple2<Integer, Tuple2<Integer, Integer>>, Integer, Float>() {
+//                            @Override
+//                            public Tuple2<Integer, Float> call(Tuple2<Integer, Tuple2<Integer, Integer>> patternWithSummedUpPositiveAndNegatives) throws Exception {
+//                                Integer patternID = patternWithSummedUpPositiveAndNegatives._1();
+//                                Integer positives = patternWithSummedUpPositiveAndNegatives._2()._1();
+//                                Integer negatives = patternWithSummedUpPositiveAndNegatives._2()._2();
+//                                Float confidence = (float) positives / (positives + negatives);
+//                                return new Tuple2(patternID, confidence);
+//                            }
+//                        });
+//
+//                //patternConfidences.saveAsTextFile(outputDirectory + "/patternconfidences");
+//
+//                //######## Find occurences of patterns in text
+//                //Compile candidate tuple list: <pattern, <candidate tuple, similarity>>
+//                JavaPairRDD<Integer, Tuple2<Tuple2, Float>> patternsWithTuples = textSegments
+//                        .flatMapToPair(new PairFlatMapFunction<Tuple2<Tuple2, TupleContext>, Integer, Tuple2<Tuple2, Float>>() {
+//                            @Override
+//                            public Iterable<Tuple2<Integer, Tuple2<Tuple2, Float>>> call(Tuple2<Tuple2, TupleContext> textSegment) throws Exception {
+//
+//                                //Algorithm from figure 4
+//                                //
+//                                List<Tuple2<Integer, Tuple2<Tuple2, Float>>> candidateTuplesWithPatternAndSimilarity = new ArrayList();
+//
+//                                Tuple2<String, String> candidateTuple = textSegment._1();
+//                                TupleContext tupleContext = textSegment._2();
+//
+//                                Integer bestPattern = null;
+//                                float bestSimilarity = 0.0f;
+//                                Integer patternIndex = 0;
+//                                while (patternIndex < finalPatterns.size()) {
+//                                    TupleContext pattern = finalPatterns.get(patternIndex);
+//                                    float similarity = calculateDegreeOfMatch(tupleContext, pattern);
+//                                    if (similarity >= degreeOfMatchThreshold) {
+//                                        if (similarity > bestSimilarity) {
+//                                            bestSimilarity = similarity;
+//                                            bestPattern = patternIndex;
+//                                        }
+//                                    }
+//                                    patternIndex++;
+//                                }
+//                                if (bestSimilarity >= degreeOfMatchThreshold) {
+//                                    candidateTuplesWithPatternAndSimilarity.add(new Tuple2(bestPattern, new Tuple2(candidateTuple, bestSimilarity)));
+//                                }
+//                                return candidateTuplesWithPatternAndSimilarity;
+//                            }
+//                        });
+//
+//                //patternsWithTuples.saveAsTextFile(outputDirectory + "/patternsWithTuples" + currentIteration);
+//
+//                //######## Make candidate tuples
+//                //Join candidate tuples with pattern confidences: <pattern_id, <<candidate tuple, similarity>, pattern_conf>>
+//                JavaPairRDD<Integer, Tuple2<Tuple2<Tuple2, Float>, Float>> candidateTuplesWithPatternConfidences =
+//                        patternsWithTuples.join(patternConfidences);
+//
+//                //Reformat to <candidate tuple, <pattern_conf, similarity>>
+//                JavaPairRDD<Tuple2, Tuple2<Float, Float>> candidateTuples = candidateTuplesWithPatternConfidences
+//                        .mapToPair(new PairFunction<Tuple2<Integer, Tuple2<Tuple2<Tuple2, Float>, Float>>, Tuple2, Tuple2<Float, Float>>() {
+//                            @Override
+//                            public Tuple2<Tuple2, Tuple2<Float, Float>> call(Tuple2<Integer, Tuple2<Tuple2<Tuple2, Float>, Float>> foo) throws Exception {
+//                                Tuple2 candidateTuple = foo._2()._1()._1();
+//                                Float patternConf = foo._2()._2();
+//                                Float similarity = foo._2()._1()._2();
+//                                return new Tuple2(candidateTuple, new Tuple2(patternConf, similarity));
+//                            }
+//                        });
+//                
+//                long candidateTuplesTime = Time.now();
+//                result.candidateTuplesTime = (candidateTuplesTime - finalPatternsTime);
+//                result.candidateTuples = candidateTuples.count();
+//
+//                //Execute first step of tuple confidence calculation
+//                JavaPairRDD<Tuple2, Float> confidenceSubtrahend = candidateTuples
+//                        .combineByKey(
+//                                new Function<Tuple2<Float, Float>, Float>() {
+//                                    @Override
+//                                    public Float call(Tuple2<Float, Float> patternMatch) throws Exception {
+//                                        return 1.0f - (patternMatch._1() * patternMatch._2());
+//                                    }
+//                                },
+//                                new Function2<Float, Tuple2<Float, Float>, Float>() {
+//                                    @Override
+//                                    public Float call(Float currentValue, Tuple2<Float, Float> patternMatch) throws Exception {
+//                                        return currentValue * (1.0f - (patternMatch._1() * patternMatch._2()));
+//                                    }
+//                                }, new Function2<Float, Float, Float>() {
+//                                    @Override
+//                                    public Float call(Float value1, Float value2) throws Exception {
+//                                        return value1 * value2;
+//                                    }
+//                                });
+//
+//                //Finish tuple confidence calculation, with organization as key: <organization, <location, tuple confidence>>
+//                JavaPairRDD<String, Tuple2<String, Float>> candidateTupleconfidencesWithOrganizationAsKey = confidenceSubtrahend
+//                        .mapToPair(new PairFunction<Tuple2<Tuple2, Float>, String, Tuple2<String, Float>>() {
+//                            @Override
+//                            public Tuple2<String, Tuple2<String, Float>> call(Tuple2<Tuple2, Float> tupleAndSubtrahend) throws Exception {
+//                                String organization = (String) tupleAndSubtrahend._1()._1();
+//                                String location = (String) tupleAndSubtrahend._1()._2();
+//                                Float subtrahend = tupleAndSubtrahend._2();
+//                                return new Tuple2(organization, new Tuple2(location, 1.0f - subtrahend));
+//                            }
+//                        });
+//
+//                //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>
+//                JavaPairRDD<String, Tuple2<String, Float>> filteredTuples = candidateTupleconfidencesWithOrganizationAsKey
+//                        .filter(new Function<Tuple2<String, Tuple2<String, Float>>, Boolean>() {
+//                            @Override
+//                            public Boolean call(Tuple2<String, Tuple2<String, Float>> tupleWithConfidence) throws Exception {
+//                                Float confidence = tupleWithConfidence._2()._2();
+//                                if (confidence > tupleConfidenceThreshold) {
+//                                    return true;
+//                                } else {
+//                                    return false;
+//                                }
+//                            }
+//                        });
+//
+//                //Filter candidate tuples by organization, choosing highest confidence: <organization, <location, tuple confidence>>
+//                JavaPairRDD<String, Tuple2<String, Float>> uniqueFilteredTuples = filteredTuples
+//                        .reduceByKey(new Function2<Tuple2<String, Float>, Tuple2<String, Float>, Tuple2<String, Float>>() {
+//                            @Override
+//                            public Tuple2 call(Tuple2<String, Float> v1, Tuple2<String, Float> v2) throws Exception {
+//                                return v1._2() > v2._2() ? v1 : v2;
+//                            }
+//                        });
+//
+//                //Store new seed tuples without their confidence: <organization, location>
+//                JavaPairRDD<String, String> newSeedTuples = uniqueFilteredTuples
+//                        .mapToPair(new PairFunction<Tuple2<String, Tuple2<String, Float>>, String, String>() {
+//
+//                            @Override
+//                            public Tuple2<String, String> call(Tuple2<String, Tuple2<String, Float>> t) throws Exception {
+//                                String organization = t._1();
+//                                String location = t._2()._1();
+//                                return new Tuple2(organization, location);
+//                            }
+//                        });
+//                
+//
+//                long newSeedTuplesTime = Time.now();
+//                result.newSeedTuplesTime = (newSeedTuplesTime - candidateTuplesTime);
+//                result.newSeedTuples = newSeedTuples.count();
+//
+//                //Add new seed tuples to the old ones
+//                seedTuples = seedTuples.union(newSeedTuples).distinct();
+//                
+//                long totalSeedTuplesTime = Time.now();
+//                result.totalSeedTuplesTime = (totalSeedTuplesTime - newSeedTuplesTime);
+//                result.totalSeedTuples = seedTuples.count();
+//
+//                resultList.add(result);
+//
+//            }
+//            
+//            //seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples");
+//            
+//            System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
+//                    "new seed tuples => final seed tuples");
+//            for (Result r : resultList) {
+//            	String output = "Iteration " + r.iterationNumber + ": " + r.rawPatterns + " => " +
+//                        r.centroids + " => " +
+//                        r.finalPatterns + " => " +
+//                        r.candidateTuples + " => " +
+//                        r.newSeedTuples + " => " +
+//                        r.totalSeedTuples;
+//                System.out.println(output);
+//            	String outputTime = "Times " + r.iterationNumber + ": " + (r.rawPatternsTime/1000.0f) + "s => " +
+//                        (r.centroidsTime/1000.0f) + " s => " +
+//                        (r.finalPatternsTime/1000.0f) + " s => " +
+//                        (r.candidateTuplesTime/1000.0f) + " s => " +
+//                        (r.newSeedTuplesTime/1000.0f) + " s => " +
+//                        (r.totalSeedTuplesTime/1000.0f) + " s";
+//                System.out.println(outputTime);
+//            }
+//            long endTime = Time.now();
+//            System.out.println("Finished!");
+//            System.out.println("It took: " + ((endTime - startTime)/1000.0f) + " seconds.");
         }
     }
+    
 
 	static class LineItem implements Serializable {
         Integer INDEX;

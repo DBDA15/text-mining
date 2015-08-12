@@ -1,8 +1,8 @@
 Description of Spark Jobs
 
-count:483 -> Initialization + Search for raw patterns
-collect:529 -> Clustering Level 1
-count:585 -> Clustering Level 2 + Search for Text Segments
-count:714 -> Search for Candidate Tuples
-count:784 -> Find new seed tuples
-count:790 -> Union with existing seed tuples
+count:486 -> Initialization + Search for raw patterns
+collect:532 -> Clustering Level 1
+count:587 -> Clustering Level 2 + Search for Text Segments
+count:716 -> Search for Candidate Tuples
+count:786 -> Find new seed tuples
+count:792 -> Union with existing seed tuples

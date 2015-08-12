@@ -583,6 +583,8 @@ public class App
                         });
 
                 textSegments.persist(StorageLevel.MEMORY_ONLY());
+                result.textSegments = textSegments.count();
+
                 //textSegments.saveAsTextFile(outputDirectory + "/textsegments");
 
                 //######## Generate pattern confidences

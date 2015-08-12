@@ -28,7 +28,7 @@ public class App
 
     //Parameters
 
-    private static Integer numberOfIterations = 2;
+    private static Integer numberOfIterations = 1;
     //Maximum size of the left window (left of first entity tag) and the right window (right of second entity tag)
     private static Integer windowSize = 5;
     //Maximum distance between both entity tags in tokens
@@ -335,6 +335,10 @@ public class App
         //Initialize spark environment
         SparkConf config = new SparkConf().setAppName(App.class.getName());
         config.set("spark.hadoop.validateOutputSpecs", "false");
+        //Insert the following lines to enable event logging onto HDFS
+        //config.set("spark.eventLog.enabled", "true");
+        //config.set("spark.eventLog.dir", "hdfs://tenemhead2/tmp/text-mining/eventLogs");
+
 
         try(JavaSparkContext context = new JavaSparkContext(config)) {
         	
@@ -378,7 +382,7 @@ public class App
                             return keyList;
                         }
                     });
-            
+
             organizationSentenceTuples.persist(StorageLevel.MEMORY_ONLY());
 
             //Read the seed tuples as pairs: <organization, location>
@@ -396,14 +400,15 @@ public class App
             System.out.println("#########################");
             System.out.println("#Finished initialization#");
             System.out.println("#########################");
+            System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
+                    "(new) seed tuples => final seed tuples");
 
-            Integer currentIteration = 1;
+            Integer currentIteration = 0;
             List<Result> resultList = new ArrayList<Result>();
 
             while (currentIteration <= numberOfIterations) {
             	Result result = new Result();
             	result.iterationNumber = currentIteration;
-                currentIteration += 1;
                 System.out.println("#########################");
                 System.out.println("####Begin iteration " + currentIteration + "####");
                 System.out.println("#########################");
@@ -476,48 +481,48 @@ public class App
                                 return patterns;
                             }
                         });
-                
+
                 result.rawPatterns = rawPatterns.count();
 
                 //Cluster the raw patterns in a partition
                 JavaRDD<Tuple2<TupleContext, Integer>> clusterCentroids = rawPatterns.mapPartitions(new FlatMapFunction<java.util.Iterator<TupleContext>, Tuple2<TupleContext, Integer>>() {
                     @Override
                     public Iterable<Tuple2<TupleContext, Integer>> call(java.util.Iterator<TupleContext> rawPatterns) throws Exception {
-						List<List> clusters = new ArrayList<>();
-						while(rawPatterns.hasNext()) {
-							TupleContext pattern = rawPatterns.next();
-				            if (clusters.isEmpty()) {
-				                List<TupleContext> newCluster = new ArrayList<>();
-				                newCluster.add(pattern);
-				                clusters.add(newCluster);
-				            } else {
-				                Integer clusterIndex = 0;
-				                Integer nearestCluster = null;
-				                Float greatestSimilarity = 0.0f;
-				                for (List<TupleContext> cluster : clusters) {
-				                    Float similarity = calculateDegreeOfMatchWithCluster(pattern, cluster);
-				                    if (similarity > greatestSimilarity) {
-				                        nearestCluster = clusterIndex;
-				                        greatestSimilarity = similarity;
-				                    }
-				                    clusterIndex++;
-				                }
+                        List<List> clusters = new ArrayList<>();
+                        while (rawPatterns.hasNext()) {
+                            TupleContext pattern = rawPatterns.next();
+                            if (clusters.isEmpty()) {
+                                List<TupleContext> newCluster = new ArrayList<>();
+                                newCluster.add(pattern);
+                                clusters.add(newCluster);
+                            } else {
+                                Integer clusterIndex = 0;
+                                Integer nearestCluster = null;
+                                Float greatestSimilarity = 0.0f;
+                                for (List<TupleContext> cluster : clusters) {
+                                    Float similarity = calculateDegreeOfMatchWithCluster(pattern, cluster);
+                                    if (similarity > greatestSimilarity) {
+                                        nearestCluster = clusterIndex;
+                                        greatestSimilarity = similarity;
+                                    }
+                                    clusterIndex++;
+                                }
 
-				                if (greatestSimilarity > similarityThreshold) {
-				                    clusters.get(nearestCluster).add(pattern);
-				                } else {
-				                    List<TupleContext> separateCluster = new ArrayList<>();
-				                    separateCluster.add(pattern);
-				                    clusters.add(separateCluster);
-				                }
-				            }
-				        }
-						List<Tuple2<TupleContext, Integer>> centroidList = new ArrayList<Tuple2<TupleContext, Integer>>();
-				        for (List<TupleContext> cluster : clusters) {
-				            //TODO: dynamic cluster size threshold
-				            TupleContext centroid = calculateCentroid(cluster);
-				            centroidList.add(new Tuple2(centroid, cluster.size()));
-				        }
+                                if (greatestSimilarity > similarityThreshold) {
+                                    clusters.get(nearestCluster).add(pattern);
+                                } else {
+                                    List<TupleContext> separateCluster = new ArrayList<>();
+                                    separateCluster.add(pattern);
+                                    clusters.add(separateCluster);
+                                }
+                            }
+                        }
+                        List<Tuple2<TupleContext, Integer>> centroidList = new ArrayList<Tuple2<TupleContext, Integer>>();
+                        for (List<TupleContext> cluster : clusters) {
+                            //TODO: dynamic cluster size threshold
+                            TupleContext centroid = calculateCentroid(cluster);
+                            centroidList.add(new Tuple2(centroid, cluster.size()));
+                        }
 				        return centroidList;
 					}
 				});
@@ -779,26 +784,23 @@ public class App
 
                 //Add new seed tuples to the old ones
                 seedTuples = seedTuples.union(newSeedTuples).distinct();
+                seedTuples.persist(StorageLevel.MEMORY_AND_DISK());
 
                 result.totalSeedTuples = seedTuples.count();
 
-                resultList.add(result);
-
-            }
-            
-            seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples");
-            
-            System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
-                    "(new) seed tuples => final seed tuples");
-            for (Result r : resultList) {
-            	String output = "Iteration " + r.iterationNumber + ": " + r.rawPatterns + " => " +
-                        r.centroids + " => " +
-                        r.finalPatterns + " => " +
-                        r.candidateTuples + " => " +
-                        r.newSeedTuples + " => " +
-                        r.totalSeedTuples;
+                String output = "Iteration " + result.iterationNumber + ": " + result.rawPatterns + " => " +
+                        result.centroids + " => " +
+                        result.finalPatterns + " => " +
+                        result.candidateTuples + " => " +
+                        result.newSeedTuples + " => " +
+                        result.totalSeedTuples;
                 System.out.println(output);
+
+                currentIteration += 1;
             }
+
+            seedTuples.saveAsTextFile(outputDirectory + "/seedtuplesOutput.txt");
+
             System.out.println("Finished!");
         }
     }

@@ -403,7 +403,7 @@ public class App
             System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
                     "(new) seed tuples => final seed tuples");
 
-            Integer currentIteration = 0;
+            Integer currentIteration = 1;
             List<Result> resultList = new ArrayList<Result>();
 
             while (currentIteration <= numberOfIterations) {

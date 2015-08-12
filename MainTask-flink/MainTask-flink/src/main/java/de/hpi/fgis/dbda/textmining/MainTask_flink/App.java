@@ -28,10 +28,8 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
 
-/** Implementation of the SINDY algorithm for scalable IND discovery. */
 public class App {
 
-	private static final int ATTRIBUTE_INDEX_OFFSET = 1000;
 
 	/** Stores execution parameters of this job. */
 	private final Parameters parameters;
@@ -170,21 +168,19 @@ public class App {
 
 		// Trigger the job execution and measure the execution time.
 		long startTime = System.currentTimeMillis();
-        Integer lastSeedTuples = 15;
         try {
             JobExecutionResult results = env.execute("Snowball");
             Integer i;
             System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
-                    "new seed tuples => final seed tuples");
+                    "(new) seed tuples => final seed tuples");
             for (i = 1; i <= parameters.numberOfIterations; i++) {
                 String output = "Iteration " + i + ": " + results.getAccumulatorResult("numRawPatterns" + i) + " => " +
                         results.getAccumulatorResult("numCentroids" + i) + " => " +
                         results.getAccumulatorResult("numFinalPatterns" + i) + " => " +
                         results.getAccumulatorResult("numCandidateTuples" + i) + " => " +
-                        ((Integer)results.getAccumulatorResult("numFinalSeedTuples" + i) - lastSeedTuples) + " => " +
+                        results.getAccumulatorResult("numNewSeedTuples" + i) + " => " +
                         results.getAccumulatorResult("numFinalSeedTuples" + i);
                 System.out.println(output);
-                lastSeedTuples = results.getAccumulatorResult("numFinalSeedTuples" + i);
             }
             for (i = 1; i <= parameters.numberOfIterations; i++) {
                 System.out.println("Iteration " + i + " Histograms:");

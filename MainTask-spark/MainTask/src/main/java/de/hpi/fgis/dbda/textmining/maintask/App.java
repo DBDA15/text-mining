@@ -324,9 +324,6 @@ public class App
 
     public static void main( String[] args )
     {
-    	
-    	long startTime = Time.now();
-
         final String outputDirectory = args[0];
         
         //Initialize entity tags for the relation extraction
@@ -404,7 +401,6 @@ public class App
             List<Result> resultList = new ArrayList<Result>();
 
             while (currentIteration <= numberOfIterations) {
-            	long iterationTime = Time.now();
             	Result result = new Result();
             	result.iterationNumber = currentIteration;
                 currentIteration += 1;
@@ -481,8 +477,6 @@ public class App
                             }
                         });
                 
-                long rawPatternsTime = Time.now();
-                result.rawPatternsTime = (rawPatternsTime - iterationTime);
                 result.rawPatterns = rawPatterns.count();
 
                 //Cluster the raw patterns in a partition
@@ -527,24 +521,16 @@ public class App
 				        return centroidList;
 					}
 				});
-                
-                long centroidsTime = Time.now();
-                result.centroidsTime = (centroidsTime - rawPatternsTime);
 
-                //Collect all raw patterns on the driver
+
                 List<Tuple2<TupleContext, Integer>> patternList = clusterCentroids
                         .collect();
                 
                 result.centroids = patternList.size();
 
                 final List<TupleContext> finalPatterns = calculateClusterCentroids(patternList);
-                
-                long finalPatternsTime = Time.now();
-                result.finalPatternsTime = (finalPatternsTime - centroidsTime);
-                
-                result.finalPatterns = finalPatterns.size();
 
-                //System.out.println(patterns);
+                result.finalPatterns = finalPatterns.size();
 
                 //Search sentences for occurrences of the two entity tags
                 //Returns: List of <tuple, context>
@@ -718,9 +704,7 @@ public class App
                                 return new Tuple2(candidateTuple, new Tuple2(patternConf, similarity));
                             }
                         });
-                
-                long candidateTuplesTime = Time.now();
-                result.candidateTuplesTime = (candidateTuplesTime - finalPatternsTime);
+
                 result.candidateTuples = candidateTuples.count();
 
                 //Execute first step of tuple confidence calculation
@@ -790,17 +774,12 @@ public class App
                                 return new Tuple2(organization, location);
                             }
                         });
-                
 
-                long newSeedTuplesTime = Time.now();
-                result.newSeedTuplesTime = (newSeedTuplesTime - candidateTuplesTime);
                 result.newSeedTuples = newSeedTuples.count();
 
                 //Add new seed tuples to the old ones
                 seedTuples = seedTuples.union(newSeedTuples).distinct();
-                
-                long totalSeedTuplesTime = Time.now();
-                result.totalSeedTuplesTime = (totalSeedTuplesTime - newSeedTuplesTime);
+
                 result.totalSeedTuples = seedTuples.count();
 
                 resultList.add(result);
@@ -810,7 +789,7 @@ public class App
             seedTuples.saveAsTextFile(outputDirectory + "/newseedtuples");
             
             System.out.println("Iteration n: raw patterns => centroids => final patterns => candidate tuples => " +
-                    "new seed tuples => final seed tuples");
+                    "(new) seed tuples => final seed tuples");
             for (Result r : resultList) {
             	String output = "Iteration " + r.iterationNumber + ": " + r.rawPatterns + " => " +
                         r.centroids + " => " +
@@ -819,17 +798,8 @@ public class App
                         r.newSeedTuples + " => " +
                         r.totalSeedTuples;
                 System.out.println(output);
-            	String outputTime = "Times " + r.iterationNumber + ": " + (r.rawPatternsTime/1000.0f) + "s => " +
-                        (r.centroidsTime/1000.0f) + " s => " +
-                        (r.finalPatternsTime/1000.0f) + " s => " +
-                        (r.candidateTuplesTime/1000.0f) + " s => " +
-                        (r.newSeedTuplesTime/1000.0f) + " s => " +
-                        (r.totalSeedTuplesTime/1000.0f) + " s";
-                System.out.println(outputTime);
             }
-            long endTime = Time.now();
             System.out.println("Finished!");
-            System.out.println("It took: " + ((endTime - startTime)/1000.0f) + " seconds.");
         }
     }
 

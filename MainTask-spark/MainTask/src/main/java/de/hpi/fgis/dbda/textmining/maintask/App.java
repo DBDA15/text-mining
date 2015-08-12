@@ -174,19 +174,19 @@ public class App
 
             float left, middle, right;
 
-            if (Math.sqrt(centroidLeftSum) > 0.0 || Math.sqrt(patternLeftSum) > 0.0) {
+            if (centroidLeftSum > 0.0 || patternLeftSum > 0.0) {
                 left = (leftSimilarity / ((float)Math.sqrt(centroidLeftSum) * (float)Math.sqrt(patternLeftSum)));
             } else {
                 left = 0.0f;
             }
 
-            if (Math.sqrt(centroidMiddleSum) > 0.0 || Math.sqrt(patternMiddleSum) > 0.0) {
+            if (centroidMiddleSum > 0.0 || patternMiddleSum > 0.0) {
                 middle = (middleSimilarity / ((float)Math.sqrt(centroidMiddleSum) * (float)Math.sqrt(patternMiddleSum)));
             } else {
                 middle = 0.0f;
             }
 
-            if (Math.sqrt(centroidRightSum) > 0.0 || Math.sqrt(patternRightSum) > 0.0) {
+            if (centroidRightSum > 0.0 || patternRightSum > 0.0) {
                 right = (rightSimilarity / ((float)Math.sqrt(centroidRightSum) * (float)Math.sqrt(patternRightSum)));
             } else {
                 right = 0.0f;

@@ -138,7 +138,7 @@ public class App {
         
         DataSet<Tuple5<Map,String,Map,String,Map>> rawPatternsMapped = rawPatterns.map(new RawPatternsMapper());
         
-        rawPatternsMapped.count();
+        rawPatternsMapped.writeAsText(parameters.output+"/tmp")
         
         //Cluster the raw patterns in a partition
 //        DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");

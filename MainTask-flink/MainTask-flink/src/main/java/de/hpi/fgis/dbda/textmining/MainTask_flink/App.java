@@ -46,8 +46,6 @@ import de.hpi.fgis.dbda.textmining.functions.ReplaceNewLines;
 import de.hpi.fgis.dbda.textmining.functions.SearchForTagOccurences;
 import de.hpi.fgis.dbda.textmining.functions.SearchRawPatterns;
 import de.hpi.fgis.dbda.textmining.functions.SeedTuplesExtractor;
-import de.hpi.fgis.dbda.textmining.functions.SplitSentences;
-import de.hpi.fgis.dbda.textmining.functions.TagSentences;
 import de.hpi.fgis.dbda.textmining.functions.TextSegmentMapper;
 import de.hpi.fgis.dbda.textmining.functions.TupleGenerationPatternsFinder;
 import de.hpi.fgis.dbda.textmining.functions.UniqueOrganizationReducer;

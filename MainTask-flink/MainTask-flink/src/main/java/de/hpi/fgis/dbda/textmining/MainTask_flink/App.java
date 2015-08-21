@@ -132,26 +132,26 @@ public class App {
 //
 //        rawPatterns.writeAsCsv(parameters.output+"/rawPatterns", FileSystem.WriteMode.OVERWRITE);
 //        
-//        DataSource<Tuple5<String, String, String, String, String>> rawPatterns = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class);
-//        
-//        DataSet<Tuple5<Map,String,Map,String,Map>> rawPatternsMapped = rawPatterns.map(new RawPatternsMapper());
-////        
-////        rawPatternsMapped.writeAsText(parameters.output+"/tmp", FileSystem.WriteMode.OVERWRITE);
-//        
-//        //Cluster the raw patterns in a partition
-//        DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
-//        
-//        clusterCentroids.writeAsCsv(parameters.output+"/clusterCentroids", FileSystem.WriteMode.OVERWRITE);
-//        
-		DataSource<Tuple6<String, String, String, String, String, Integer>> clusterCentroids = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class, Integer.class);
-		
-		DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroidsMapped = clusterCentroids.map(new ClusterCentroidsMapper());
-
-//
-//        //Cluster the centroids from all partitions
-        DataSet<Tuple5<Map,String,Map,String,Map>> finalPatterns = clusterCentroidsMapped.reduceGroup(new ClusterCentroids(parameters.similarityThreshold, parameters.minimalClusterSize)).name("Cluster the cluster centroids");
+        DataSource<Tuple5<String, String, String, String, String>> rawPatterns = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class);
         
-        finalPatterns.writeAsCsv(parameters.output+"/finalPatterns", FileSystem.WriteMode.OVERWRITE);
+        DataSet<Tuple5<Map,String,Map,String,Map>> rawPatternsMapped = rawPatterns.map(new RawPatternsMapper());
+//        
+//        rawPatternsMapped.writeAsText(parameters.output+"/tmp", FileSystem.WriteMode.OVERWRITE);
+        
+        //Cluster the raw patterns in a partition
+        DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
+        
+        clusterCentroids.writeAsCsv(parameters.output+"/clusterCentroids", FileSystem.WriteMode.OVERWRITE);
+        
+//		DataSource<Tuple6<String, String, String, String, String, Integer>> clusterCentroids = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class, Integer.class);
+//		
+//		DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroidsMapped = clusterCentroids.map(new ClusterCentroidsMapper());
+//
+////
+////        //Cluster the centroids from all partitions
+//        DataSet<Tuple5<Map,String,Map,String,Map>> finalPatterns = clusterCentroidsMapped.reduceGroup(new ClusterCentroids(parameters.similarityThreshold, parameters.minimalClusterSize)).name("Cluster the cluster centroids");
+//        
+//        finalPatterns.writeAsCsv(parameters.output+"/finalPatterns", FileSystem.WriteMode.OVERWRITE);
 //
 //		
 //		DataSource<String> sentencesWithTags = env.readFileOfPrimitives(parameters.inputFile, String.class);

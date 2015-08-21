@@ -9,13 +9,13 @@ import org.apache.flink.api.java.tuple.Tuple2;
 
 public class TokenListGenerator {
 
-    public static List<Tuple2> generateTokenList(String sentence) {
+    public static List<Tuple2<String, String>> generateTokenList(String sentence) {
         //Create regex pattern that finds NER XML tags in the sentence (e.g. "<LOCATION>New York</LOCATION>")
         Pattern NERTagPattern = Pattern.compile("<([A-Z]+)>(.+?)</([A-Z]+)>");
         Matcher NERMatcher = NERTagPattern.matcher(sentence);
 
         //Store all tokens in a list of 2-tuples <string, NER tag>
-        List<Tuple2> tokenList = new ArrayList();
+        List<Tuple2<String, String>> tokenList = new ArrayList();
         Integer lastIndex = 0;
         //Iterate through all occurences of the regex pattern
         while (NERMatcher.find()) {

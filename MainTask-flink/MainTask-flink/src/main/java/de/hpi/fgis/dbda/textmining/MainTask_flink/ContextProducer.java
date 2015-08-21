@@ -8,7 +8,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 
 public class ContextProducer {
 
-	public static Map produceContext(List<Tuple2> tokenList) {
+	public static Map produceContext(List<Tuple2<String, String>> tokenList) {
         /*
            Produce the context based on a given token list. A context is a HashMap that maps each token in the token
            list to a weight. The more prominent or frequent a token is, the higher is the associated weight.

@@ -28,7 +28,7 @@ public class SearchForTagOccurences implements
 	@Override
 	public void flatMap(String arg0,
 			Collector<Tuple2<Tuple2<String, String>, TupleContext>> arg1) throws Exception {
-		List<Tuple2> tokenList = TokenListGenerator.generateTokenList(arg0);
+		List<Tuple2<String, String>> tokenList = TokenListGenerator.generateTokenList(arg0);
 
         List<Integer> entity0sites = new ArrayList<Integer>();
         List<Integer> entity1sites = new ArrayList<Integer>();
@@ -52,12 +52,12 @@ public class SearchForTagOccurences implements
                     Map beforeContext = ContextProducer.produceContext(tokenList.subList(Math.max(0, entity0site - windowSize), entity0site));
                     Map betweenContext = ContextProducer.produceContext(tokenList.subList(entity0site + 1, entity1site));
                     Map afterContext = ContextProducer.produceContext(tokenList.subList(entity1site + 1, Math.min(tokenList.size(), entity1site + windowSize + 1)));
-                    arg1.collect(new Tuple2(new Tuple2(tokenList.get(entity0site).f0, tokenList.get(entity1site).f0), new TupleContext(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
+                    arg1.collect(new Tuple2(new Tuple2(tokenList.get(entity0site).f0.replaceAll(",", "(comma)"), tokenList.get(entity1site).f0.replaceAll(",", "(comma)")), new TupleContext(beforeContext, task_entityTags.get(0), betweenContext, task_entityTags.get(1), afterContext)));
                 } else if (entity1site < entity0site && (entity0site - entity1site) <= maxDistance) {
                     Map beforeContext = ContextProducer.produceContext(tokenList.subList(Math.max(0, entity1site - windowSize), entity1site));
                     Map betweenContext = ContextProducer.produceContext(tokenList.subList(entity1site + 1, entity0site));
                     Map afterContext = ContextProducer.produceContext(tokenList.subList(entity0site + 1, Math.min(tokenList.size(), entity0site + windowSize + 1)));
-                    arg1.collect(new Tuple2(new Tuple2(tokenList.get(entity0site).f0, tokenList.get(entity1site).f0), new TupleContext(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
+                    arg1.collect(new Tuple2(new Tuple2(tokenList.get(entity0site).f0.replaceAll(",", "(comma)"), tokenList.get(entity1site).f0.replaceAll(",", "(comma)")), new TupleContext(beforeContext, task_entityTags.get(1), betweenContext, task_entityTags.get(0), afterContext)));
                 }
             }
         }

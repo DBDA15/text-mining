@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.java.DataSet;
@@ -13,6 +14,10 @@ import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.io.RemoteCollectorImpl;
 import org.apache.flink.api.java.operators.DataSource;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple4;
+import org.apache.flink.api.java.tuple.Tuple5;
+import org.apache.flink.api.java.tuple.Tuple6;
+import org.apache.flink.api.java.tuple.Tuple7;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
@@ -21,8 +26,31 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
 
+import de.hpi.fgis.dbda.textmining.functions.CalculateBestPatternSimilarity;
+import de.hpi.fgis.dbda.textmining.functions.CalculatePatternConfidences;
+import de.hpi.fgis.dbda.textmining.functions.CandidateTupleConfidenceCalculator;
+import de.hpi.fgis.dbda.textmining.functions.CandidateTupleConfidenceFilter;
+import de.hpi.fgis.dbda.textmining.functions.CandidateTupleSimplifier;
+import de.hpi.fgis.dbda.textmining.functions.CandidateTuplesMapper;
+import de.hpi.fgis.dbda.textmining.functions.ClusterCentroids;
+import de.hpi.fgis.dbda.textmining.functions.ClusterCentroidsMapper;
+import de.hpi.fgis.dbda.textmining.functions.ClusterPartition;
+import de.hpi.fgis.dbda.textmining.functions.CountSeedTuples;
+import de.hpi.fgis.dbda.textmining.functions.ExtractOrganizationSentenceTuples;
+import de.hpi.fgis.dbda.textmining.functions.FilterByTags;
+import de.hpi.fgis.dbda.textmining.functions.MapPositivesAndNegatives;
 import de.hpi.fgis.dbda.textmining.functions.MapSeedTuplesFromStrings;
+import de.hpi.fgis.dbda.textmining.functions.RawPatternsMapper;
+import de.hpi.fgis.dbda.textmining.functions.ReducePositivesAndNegatives;
+import de.hpi.fgis.dbda.textmining.functions.ReplaceNewLines;
 import de.hpi.fgis.dbda.textmining.functions.SearchForTagOccurences;
+import de.hpi.fgis.dbda.textmining.functions.SearchRawPatterns;
+import de.hpi.fgis.dbda.textmining.functions.SeedTuplesExtractor;
+import de.hpi.fgis.dbda.textmining.functions.SplitSentences;
+import de.hpi.fgis.dbda.textmining.functions.TagSentences;
+import de.hpi.fgis.dbda.textmining.functions.TextSegmentMapper;
+import de.hpi.fgis.dbda.textmining.functions.TupleGenerationPatternsFinder;
+import de.hpi.fgis.dbda.textmining.functions.UniqueOrganizationReducer;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
@@ -88,24 +116,24 @@ public class App {
 		
 		sentencesWithTags.writeAsText(parameters.output+"/sentencesWithTags", FileSystem.WriteMode.OVERWRITE);
 
-        //Generate a mapping <organization, sentence>
-		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples()).name("Extracting Orgainization Sentence Tuples");
-
-        //Read the seed tuples as pairs: <organization, location>
-		DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
+//        //Generate a mapping <organization, sentence>
+//		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples()).name("Extracting Orgainization Sentence Tuples");
 //
-        //####################
-        //#START OF ITERATION#
-        //####################
-
-        //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
-        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.joinWithTiny(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
-        
-        //Search the sentences for raw patterns
-        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
-
-        rawPatterns.writeAsCsv(parameters.output+"/rawPatterns", FileSystem.WriteMode.OVERWRITE);
-        
+//        //Read the seed tuples as pairs: <organization, location>
+//		DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
+////
+//        //####################
+//        //#START OF ITERATION#
+//        //####################
+//
+//        //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
+//        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.joinWithTiny(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
+//        
+//        //Search the sentences for raw patterns
+//        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
+//
+//        rawPatterns.writeAsCsv(parameters.output+"/rawPatterns", FileSystem.WriteMode.OVERWRITE);
+//        
 //        DataSource<Tuple5<String, String, String, String, String>> rawPatterns = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class);
 //        
 //        DataSet<Tuple5<Map,String,Map,String,Map>> rawPatternsMapped = rawPatterns.map(new RawPatternsMapper());
@@ -114,7 +142,7 @@ public class App {
 //        DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
 //        
 //        clusterCentroids.writeAsCsv(parameters.output+"/clusterCentroids", FileSystem.WriteMode.OVERWRITE);
-        
+//        
 //		DataSource<Tuple6<String, String, String, String, String, Integer>> clusterCentroids = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class, Integer.class);
 //		
 //		DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroidsMapped = clusterCentroids.map(new ClusterCentroidsMapper());
@@ -125,7 +153,7 @@ public class App {
 //        
 //        finalPatterns.writeAsCsv(parameters.output+"/finalPatterns", FileSystem.WriteMode.OVERWRITE);
 //
-		
+//		
 //		DataSource<String> sentencesWithTags = env.readFileOfPrimitives(parameters.inputFile, String.class);
 ////		
 ////	    //Search sentences for occurrences of the two entity tags
@@ -133,7 +161,7 @@ public class App {
 //	    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
 //
 //	    textSegments.writeAsCsv(parameters.output+"/textSegments", FileSystem.WriteMode.OVERWRITE);
-		
+//		
 //		DataSource<Tuple5<String, String, String, String, String>> finalPatternsCsv = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class);
 ////		
 //		DataSet<Tuple5<Map, String, Map, String, Map>> finalPatterns = finalPatternsCsv.map(new RawPatternsMapper());

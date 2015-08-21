@@ -27,14 +27,17 @@ public class HashMapWithSemicolons<K, V> extends HashMap<K, V> {
             Entry<K,V> e = i.next();
             K key = e.getKey();
             V value = e.getValue();
-            if (key.toString().equals(",")) {
-            	sb.append(key   == this ? "(this Map)" : "(comma)");
+            String keyString = key.toString();
+            if (keyString.contains(",")) {
+            	keyString.replace(",", "(comma)");
             }
-            else {
-            	sb.append(key   == this ? "(this Map)" : key);
-            }
+            sb.append(key   == this ? "(this Map)" : keyString);
             sb.append('=');
-            sb.append(value == this ? "(this Map)" : value);
+            String valueString = value.toString();
+            if (valueString.contains(",")) {
+            	valueString.replace(",", "(comma)");
+            }
+            sb.append(value == this ? "(this Map)" : valueString);
             if (! i.hasNext())
                 return sb.append('}').toString();
             sb.append(';').append(' ');

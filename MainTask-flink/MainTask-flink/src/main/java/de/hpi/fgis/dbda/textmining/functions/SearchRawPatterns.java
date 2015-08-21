@@ -32,7 +32,7 @@ public class SearchRawPatterns extends RichFlatMapFunction<Tuple2<Tuple2<String,
 		String sentence = t.f0.f1;
 		String seedTupleLocation = t.f1.f1;
 
-		List<Tuple2> tokenList = TokenListGenerator.generateTokenList(sentence);
+		List<Tuple2<String, String>> tokenList = TokenListGenerator.generateTokenList(sentence);
 
 	                            /*
 	                            Now, the token list look like this:

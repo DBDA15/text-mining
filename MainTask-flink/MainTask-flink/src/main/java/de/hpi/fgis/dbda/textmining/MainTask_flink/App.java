@@ -84,64 +84,64 @@ public class App {
 
 		// Read and parse the input sentences.
 		this.filesByAttributeIndexOffset = new Int2ObjectOpenHashMap<>();
-		Collection<String> inputPaths = loadInputPaths();
-		DataSet<String> allLines = null;
-		int cellIndexOffset = 0;
-		for (String path : inputPaths) {
-
-			DataSource<String> lines = env.readTextFile(path).name("Load " + path);
-
-			if (allLines == null) {
-				allLines = lines;
-			} else {
-				allLines = allLines.union(lines);
-			}
-
-		}
-		
-		DataSet<String> taggedSentences = allLines;
-		
-		if (!parameters.alreadyTagged) {
-		
-			DataSet<String> cleanSentences = allLines.map(new ReplaceNewLines()).name("Replacing new lines");
-			
-			DataSet<String> splittedSentences = cleanSentences.flatMap(new SplitSentences()).name("Splitting sentences");
-			
-			taggedSentences = splittedSentences.map(new TagSentences()).name("NER-Tagging sentences");
-		
-		}
-		
-        //Filter sentences: retain only those that contain both entity tags: <sentence>
-		DataSet<String> sentencesWithTags = taggedSentences.filter(new FilterByTags(task_entityTags)).name("Filtering out lines by NER tags");
-		
-//		sentencesWithTags.writeAsText(parameters.output+"/sentencesWithTags", FileSystem.WriteMode.OVERWRITE);
-
-        //Generate a mapping <organization, sentence>
-		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples()).name("Extracting Orgainization Sentence Tuples");
-
-        //Read the seed tuples as pairs: <organization, location>
-		DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
+//		Collection<String> inputPaths = loadInputPaths();
+//		DataSet<String> allLines = null;
+//		int cellIndexOffset = 0;
+//		for (String path : inputPaths) {
+//
+//			DataSource<String> lines = env.readTextFile(path).name("Load " + path);
+//
+//			if (allLines == null) {
+//				allLines = lines;
+//			} else {
+//				allLines = allLines.union(lines);
+//			}
+//
+//		}
+//		
+//		DataSet<String> taggedSentences = allLines;
+//		
+//		if (!parameters.alreadyTagged) {
+//		
+//			DataSet<String> cleanSentences = allLines.map(new ReplaceNewLines()).name("Replacing new lines");
+//			
+//			DataSet<String> splittedSentences = cleanSentences.flatMap(new SplitSentences()).name("Splitting sentences");
+//			
+//			taggedSentences = splittedSentences.map(new TagSentences()).name("NER-Tagging sentences");
+//		
+//		}
+//		
+//        //Filter sentences: retain only those that contain both entity tags: <sentence>
+//		DataSet<String> sentencesWithTags = taggedSentences.filter(new FilterByTags(task_entityTags)).name("Filtering out lines by NER tags");
+//		
+////		sentencesWithTags.writeAsText(parameters.output+"/sentencesWithTags", FileSystem.WriteMode.OVERWRITE);
+//
+//        //Generate a mapping <organization, sentence>
+//		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples()).name("Extracting Orgainization Sentence Tuples");
+//
+//        //Read the seed tuples as pairs: <organization, location>
+//		DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
 //
         //####################
         //#START OF ITERATION#
         //####################
 
-        //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
-        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.joinWithTiny(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
+//        //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
+//        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.joinWithTiny(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
+//        
+//        //Search the sentences for raw patterns
+//        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
+//
+//        rawPatterns.writeAsCsv(parameters.output+"/rawPatterns", FileSystem.WriteMode.OVERWRITE);
+//        
+        DataSource<Tuple5<String, String, String, String, String>> rawPatterns = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class);
         
-        //Search the sentences for raw patterns
-        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
-
-        rawPatterns.writeAsCsv(parameters.output+"/rawPatterns", FileSystem.WriteMode.OVERWRITE);
-//        
-//        DataSource<Tuple5<String, String, String, String, String>> rawPatterns = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class);
-//        
-//        DataSet<Tuple5<Map,String,Map,String,Map>> rawPatternsMapped = rawPatterns.map(new RawPatternsMapper());
-//        
-//        //Cluster the raw patterns in a partition
-//        DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
-//        
-//        clusterCentroids.writeAsCsv(parameters.output+"/clusterCentroids", FileSystem.WriteMode.OVERWRITE);
+        DataSet<Tuple5<Map,String,Map,String,Map>> rawPatternsMapped = rawPatterns.map(new RawPatternsMapper());
+        
+        //Cluster the raw patterns in a partition
+        DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
+        
+        clusterCentroids.writeAsCsv(parameters.output+"/clusterCentroids", FileSystem.WriteMode.OVERWRITE);
 //        
 //		DataSource<Tuple6<String, String, String, String, String, Integer>> clusterCentroids = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class, Integer.class);
 //		

@@ -138,10 +138,12 @@ public class App {
         
         DataSet<Tuple5<Map,String,Map,String,Map>> rawPatternsMapped = rawPatterns.map(new RawPatternsMapper());
         
-        //Cluster the raw patterns in a partition
-        DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
+        rawPatternsMapped.count();
         
-        clusterCentroids.writeAsCsv(parameters.output+"/clusterCentroids", FileSystem.WriteMode.OVERWRITE);
+        //Cluster the raw patterns in a partition
+//        DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
+//        
+//        clusterCentroids.writeAsCsv(parameters.output+"/clusterCentroids", FileSystem.WriteMode.OVERWRITE);
 //        
 //		DataSource<Tuple6<String, String, String, String, String, Integer>> clusterCentroids = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class, Integer.class);
 //		

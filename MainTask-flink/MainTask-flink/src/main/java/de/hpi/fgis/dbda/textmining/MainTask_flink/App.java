@@ -138,7 +138,7 @@ public class App {
 //        
 //        rawPatternsMapped.writeAsText(parameters.output+"/tmp", FileSystem.WriteMode.OVERWRITE);
         
-        Cluster the raw patterns in a partition
+        //Cluster the raw patterns in a partition
         DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
         
         clusterCentroids.writeAsCsv(parameters.output+"/clusterCentroids", FileSystem.WriteMode.OVERWRITE);

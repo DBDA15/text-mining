@@ -19,7 +19,9 @@ public class ContextMapper {
 			String[] keyValueSplit = s.split("=");
 			if (keyValueSplit.length > 1) {
 				String key = keyValueSplit[0];
-				outputMap.put(key, Double.parseDouble(keyValueSplit[1]));
+				if (keyValueSplit[1] != null && keyValueSplit[1].length() > 0) {
+					outputMap.put(key, Double.parseDouble(keyValueSplit[1]));
+				}
 			}
 		}
 		return outputMap;

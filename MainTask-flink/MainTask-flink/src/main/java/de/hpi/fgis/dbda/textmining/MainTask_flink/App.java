@@ -35,14 +35,12 @@ import de.hpi.fgis.dbda.textmining.functions.CandidateTuplesMapper;
 import de.hpi.fgis.dbda.textmining.functions.ClusterCentroids;
 import de.hpi.fgis.dbda.textmining.functions.ClusterCentroidsMapper;
 import de.hpi.fgis.dbda.textmining.functions.ClusterPartition;
-import de.hpi.fgis.dbda.textmining.functions.CountSeedTuples;
 import de.hpi.fgis.dbda.textmining.functions.ExtractOrganizationSentenceTuples;
 import de.hpi.fgis.dbda.textmining.functions.FilterByTags;
 import de.hpi.fgis.dbda.textmining.functions.MapPositivesAndNegatives;
 import de.hpi.fgis.dbda.textmining.functions.MapSeedTuplesFromStrings;
 import de.hpi.fgis.dbda.textmining.functions.RawPatternsMapper;
 import de.hpi.fgis.dbda.textmining.functions.ReducePositivesAndNegatives;
-import de.hpi.fgis.dbda.textmining.functions.ReplaceNewLines;
 import de.hpi.fgis.dbda.textmining.functions.SearchForTagOccurences;
 import de.hpi.fgis.dbda.textmining.functions.SearchRawPatterns;
 import de.hpi.fgis.dbda.textmining.functions.SeedTuplesExtractor;
@@ -82,148 +80,173 @@ public class App {
 
 		// Read and parse the input sentences.
 		this.filesByAttributeIndexOffset = new Int2ObjectOpenHashMap<>();
-//		Collection<String> inputPaths = loadInputPaths();
-//		DataSet<String> allLines = null;
-//		int cellIndexOffset = 0;
-//		for (String path : inputPaths) {
-//
-//			DataSource<String> lines = env.readTextFile(path).name("Load " + path);
-//
-//			if (allLines == null) {
-//				allLines = lines;
-//			} else {
-//				allLines = allLines.union(lines);
+		
+		DataSet<String> sentencesWithTags = null;
+		
+		if (parameters.step == 0 || parameters.step == 1) {
+			Collection<String> inputPaths = loadInputPaths();
+			DataSet<String> allLines = null;
+			int cellIndexOffset = 0;
+			for (String path : inputPaths) {
+	
+				DataSource<String> lines = env.readTextFile(path).name("Load " + path);
+	
+				if (allLines == null) {
+					allLines = lines;
+				} else {
+					allLines = allLines.union(lines);
+				}
+	
+			}
+			
+			DataSet<String> taggedSentences = allLines;
+			
+//			if (!parameters.alreadyTagged) {
+//			
+//				DataSet<String> cleanSentences = allLines.map(new ReplaceNewLines()).name("Replacing new lines");
+//				
+//				DataSet<String> splittedSentences = cleanSentences.flatMap(new SplitSentences()).name("Splitting sentences");
+//				
+//				taggedSentences = splittedSentences.map(new TagSentences()).name("NER-Tagging sentences");
+//			
 //			}
-//
-//		}
-//		
-//		DataSet<String> taggedSentences = allLines;
-//		
-//		if (!parameters.alreadyTagged) {
-//		
-//			DataSet<String> cleanSentences = allLines.map(new ReplaceNewLines()).name("Replacing new lines");
-//			
-//			DataSet<String> splittedSentences = cleanSentences.flatMap(new SplitSentences()).name("Splitting sentences");
-//			
-//			taggedSentences = splittedSentences.map(new TagSentences()).name("NER-Tagging sentences");
-//		
-//		}
-//		
-//        //Filter sentences: retain only those that contain both entity tags: <sentence>
-//		DataSet<String> sentencesWithTags = taggedSentences.filter(new FilterByTags(task_entityTags)).name("Filtering out lines by NER tags");
-//		
-////		sentencesWithTags.writeAsText(parameters.output+"/sentencesWithTags", FileSystem.WriteMode.OVERWRITE);
-//
-//        //Generate a mapping <organization, sentence>
-//		DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples()).name("Extracting Orgainization Sentence Tuples");
-//
-//        //Read the seed tuples as pairs: <organization, location>
-//		DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
-//
-        //####################
-        //#START OF ITERATION#
-        //####################
+			
+	        //Filter sentences: retain only those that contain both entity tags: <sentence>
+			sentencesWithTags = taggedSentences.filter(new FilterByTags(task_entityTags)).name("Filtering out lines by NER tags");
 
-//        //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
-//        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.joinWithTiny(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
-//        
-//        //Search the sentences for raw patterns
-//        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
-//
-//        rawPatterns.writeAsCsv(parameters.output+"/rawPatterns", FileSystem.WriteMode.OVERWRITE);
-//        
-        DataSource<Tuple5<String, String, String, String, String>> rawPatterns = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class);
-        
-        DataSet<Tuple5<Map,String,Map,String,Map>> rawPatternsMapped = rawPatterns.map(new RawPatternsMapper());
-//        
-//        rawPatternsMapped.writeAsText(parameters.output+"/tmp", FileSystem.WriteMode.OVERWRITE);
-        
-        //Cluster the raw patterns in a partition
-        DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
-        
-        clusterCentroids.writeAsCsv(parameters.output+"/clusterCentroids", FileSystem.WriteMode.OVERWRITE);
-        
-//		DataSource<Tuple6<String, String, String, String, String, Integer>> clusterCentroids = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class, Integer.class);
-//		
-//		DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroidsMapped = clusterCentroids.map(new ClusterCentroidsMapper());
-//
-////
-////        //Cluster the centroids from all partitions
-//        DataSet<Tuple5<Map,String,Map,String,Map>> finalPatterns = clusterCentroidsMapped.reduceGroup(new ClusterCentroids(parameters.similarityThreshold, parameters.minimalClusterSize)).name("Cluster the cluster centroids");
-//        
-//        finalPatterns.writeAsCsv(parameters.output+"/finalPatterns", FileSystem.WriteMode.OVERWRITE);
-//
-//		
-//		DataSource<String> sentencesWithTags = env.readFileOfPrimitives(parameters.inputFile, String.class);
-////		
-////	    //Search sentences for occurrences of the two entity tags
-////	    //Returns: List of <tuple, context>
-//	    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
-//
-//	    textSegments.writeAsCsv(parameters.output+"/textSegments", FileSystem.WriteMode.OVERWRITE);
-//		
-//		DataSource<Tuple5<String, String, String, String, String>> finalPatternsCsv = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class);
-////		
-//		DataSet<Tuple5<Map, String, Map, String, Map>> finalPatterns = finalPatternsCsv.map(new RawPatternsMapper());
-//		
-//		DataSource<Tuple7<String, String, String, String, String, String, String>> textSegments = env.readCsvFile(parameters.inputFile2).types(String.class, String.class, String.class, String.class, String.class, String.class, String.class);
-//
-//		DataSet<Tuple2<Tuple2<String, String>, Tuple5<Map, String, Map, String, Map>>> textSegmentsMapped = textSegments.map(new TextSegmentMapper());
-//
-//		
-//        //######## Generate pattern confidences
-//	    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
-//	    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegmentsMapped.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold)).withBroadcastSet(finalPatterns, "finalPatterns").name("Find patterns that generated those tuples");
-//
-//	    //Join location from seed tuples onto the matched locations: <<organization, <pattern_id, matched_location>>, <organization, seedtuple_location>>
-//        DataSet<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations.joinWithTiny(seedTuples).where(0).equalTo(0).name("Join location from seed tuples onto candidate tuples");
-//
-//        //Return counts of positives and negatives depending on whether matched location equals seed tuple location: <pattern_id, <#positives, #negatives>>
-//        DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithPositiveAndNegatives = organizationsWithMatchedAndCorrectLocation.map(new MapPositivesAndNegatives()).name("Return counts of positives and negatives depending on whether matched location equals seed tuple location");
-//
-//        //Sum up counts of positives and negatives for each pattern id: <pattern_id, <#positives, #negatives>>
-//        DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithSummedUpPositiveAndNegatives = patternsWithPositiveAndNegatives.groupBy(0).reduce(new ReducePositivesAndNegatives()).name("Sum up counts of positives and negatives for each pattern id");
-//
-//        //Calculate pattern confidence: <pattern_id, confidence>
-//        DataSet<Tuple2<Integer, Double>> patternConfidences = patternsWithSummedUpPositiveAndNegatives.map(new CalculatePatternConfidences()).name("Calculate pattern confidence");
-//
-//        //######## Find occurences of patterns in text
-//        //Compile candidate tuple list: <pattern_id, <candidate tuple, similarity>>
-//        DataSet<Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>>> patternsWithTuples = textSegmentsMapped.flatMap(new CalculateBestPatternSimilarity(parameters.degreeOfMatchThreshold)).withBroadcastSet(finalPatterns, "finalPatterns").name("Calculate the similarity of the best pattern for each candidate tuple");
-//
-//        //######## Make candidate tuples
-//        //Join candidate tuples with pattern confidences: <<pattern_id, <candidate tuple, similarity>>, <pattern_id, pattern_conf>>
-//        DataSet<Tuple2<Tuple2<Integer,Tuple2<Tuple2<String, String>,Double>>,Tuple2<Integer,Double>>> candidateTuplesWithPatternConfidences = patternsWithTuples.joinWithTiny(patternConfidences).where(0).equalTo(0).name("Join candidate tuples with pattern confidences");
-//
-//        //Reformat to <candidate tuple, <pattern_conf, similarity>>
-//        DataSet<Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>> candidateTuples = candidateTuplesWithPatternConfidences.map(new CandidateTupleSimplifier()).name("Reformat to <candidate tuple, <pattern_conf, similarity>>");
-//        
-//        candidateTuples.writeAsCsv(parameters.output+"/candidateTuples", FileSystem.WriteMode.OVERWRITE);
-//
-//		DataSource<Tuple4<String, String, String, String>> candidateTuplesCsv = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class);
-//////	
-//		DataSet<Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>> candidateTuples = candidateTuplesCsv.map(new CandidateTuplesMapper());
-//		
-//		
-//        //Execute tuple confidence calculation: <organization, <location, tuple confidence>>
-//        DataSet<Tuple2<String, Tuple2<String, Double>>> candidateTupleconfidencesWithOrganizationAsKey = candidateTuples.groupBy(0).reduceGroup(new CandidateTupleConfidenceCalculator()).name("Calculate candidate tuple confidences and use organization as key");
-//
-//        //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>
-//        DataSet<Tuple2<String, Tuple2<String, Double>>> filteredTuples = candidateTupleconfidencesWithOrganizationAsKey.filter(new CandidateTupleConfidenceFilter(parameters.tupleConfidenceThreshold)).name("Filter candidate tuples by their confidence");
-//
-//        //Filter candidate tuples by organization, choosing highest confidence: <organization, <location, tuple confidence>>
-//        DataSet<Tuple2<String, Tuple2<String, Double>>> uniqueFilteredTuples = filteredTuples.groupBy(0).reduceGroup(new UniqueOrganizationReducer()).name("Choose unique location for each organization based on highest confidence");
-//
-//        //Store new seed tuples without their confidence: <organization, location>
-//        DataSet<Tuple2<String, String>> newSeedTuples = uniqueFilteredTuples.map(new SeedTuplesExtractor()).name("Store new seed tuples without their confidence");
-//        
-//        newSeedTuples.writeAsCsv(parameters.output+"/newSeedTuples", FileSystem.WriteMode.OVERWRITE);
-//
-//		DataSource<Tuple2<String, String>> newSeedTuples = env.readCsvFile(parameters.inputFile).types(String.class, String.class);
-//		
-//        DataSet<Tuple2<String, String>> mergedSeedTuples = seedTuples.union(newSeedTuples).distinct().name("Merge new seed tuples into seed tuples");
-//        
-//        mergedSeedTuples.writeAsCsv(parameters.output+"/mergedSeedTuples", FileSystem.WriteMode.OVERWRITE);
+		}
+		
+		if (parameters.step == 0) {			
+			sentencesWithTags.writeAsText(parameters.output+"/sentencesWithTags", FileSystem.WriteMode.OVERWRITE);
+		}
+		
+		if (parameters.step == 1) {
+		
+	        //Generate a mapping <organization, sentence>
+			DataSet<Tuple2<String,String>> organizationSentenceTuples = sentencesWithTags.flatMap(new ExtractOrganizationSentenceTuples()).name("Extracting Orgainization Sentence Tuples");
+	
+	        //Read the seed tuples as pairs: <organization, location>
+			DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
+	
+	        //####################
+	        //#START OF ITERATION#
+	        //####################
+	
+	        //Retain only those sentences with a organization from the seed tuples: <<organization, sentence>, <organization, location>>
+	        DataSet<Tuple2<Tuple2<String,String>, Tuple2<String,String>>> organizationKeyListJoined = organizationSentenceTuples.joinWithTiny(seedTuples).where(0).equalTo(0).name("Joining Tuple/Sentence Pairs with Seed Tuples to filter out unnecessary sentences");
+	        
+	        //Search the sentences for raw patterns
+	        DataSet<TupleContext> rawPatterns = organizationKeyListJoined.flatMap(new SearchRawPatterns(task_entityTags)).name("Search the sentences for raw patterns");
+	
+	        rawPatterns.writeAsCsv(parameters.output+"/rawPatterns", FileSystem.WriteMode.OVERWRITE);
+		}
+		
+		if (parameters.step == 2) {
+	        DataSource<Tuple5<String, String, String, String, String>> rawPatterns = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class);
+	        
+	        DataSet<Tuple5<Map,String,Map,String,Map>> rawPatternsMapped = rawPatterns.map(new RawPatternsMapper());
+//	        
+//	        rawPatternsMapped.writeAsText(parameters.output+"/tmp", FileSystem.WriteMode.OVERWRITE);
+	        
+	        //Cluster the raw patterns in a partition
+	        DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroids = rawPatternsMapped.mapPartition(new ClusterPartition(parameters.similarityThreshold)).name("Cluster the raw patterns in a partition");
+	        
+	        clusterCentroids.writeAsCsv(parameters.output+"/clusterCentroids", FileSystem.WriteMode.OVERWRITE);
+		}
+		
+		if  (parameters.step == 3) {
+			DataSource<Tuple6<String, String, String, String, String, Integer>> clusterCentroids = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class, Integer.class);
+			
+			DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroidsMapped = clusterCentroids.map(new ClusterCentroidsMapper());
+	
+	        //Cluster the centroids from all partitions
+	        DataSet<Tuple5<Map,String,Map,String,Map>> finalPatterns = clusterCentroidsMapped.reduceGroup(new ClusterCentroids(parameters.similarityThreshold, parameters.minimalClusterSize)).name("Cluster the cluster centroids");
+	        
+	        finalPatterns.writeAsCsv(parameters.output+"/finalPatterns", FileSystem.WriteMode.OVERWRITE);
+		}
+		
+		if (parameters.step == 4) {
+			sentencesWithTags = env.readFileOfPrimitives(parameters.inputFile, String.class);
+			
+		    //Search sentences for occurrences of the two entity tags
+		    //Returns: List of <tuple, context>
+		    DataSet<Tuple2<Tuple2<String, String>, TupleContext>> textSegments = sentencesWithTags.flatMap(new SearchForTagOccurences(task_entityTags, parameters.maxDistance, parameters.windowSize)).name("Create tuple contexts for found occurences of both NER tags");
+
+		    textSegments.writeAsCsv(parameters.output+"/textSegments", FileSystem.WriteMode.OVERWRITE);
+		}
+		
+		if (parameters.step == 5) {
+			
+			DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
+			
+			DataSource<Tuple5<String, String, String, String, String>> finalPatternsCsv = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class, String.class);
+			
+			DataSet<Tuple5<Map, String, Map, String, Map>> finalPatterns = finalPatternsCsv.map(new RawPatternsMapper());
+			
+			DataSource<Tuple7<String, String, String, String, String, String, String>> textSegments = env.readCsvFile(parameters.inputFile2).types(String.class, String.class, String.class, String.class, String.class, String.class, String.class);
+
+			DataSet<Tuple2<Tuple2<String, String>, Tuple5<Map, String, Map, String, Map>>> textSegmentsMapped = textSegments.map(new TextSegmentMapper());
+			
+	        //######## Generate pattern confidences
+		    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
+		    DataSet<Tuple2<String, Tuple2<Integer, String>>> organizationsWithMatchedLocations = textSegmentsMapped.flatMap(new TupleGenerationPatternsFinder(parameters.degreeOfMatchThreshold)).withBroadcastSet(finalPatterns, "finalPatterns").name("Find patterns that generated those tuples");
+
+		    //Join location from seed tuples onto the matched locations: <<organization, <pattern_id, matched_location>>, <organization, seedtuple_location>>
+	        DataSet<Tuple2<Tuple2<String,Tuple2<Integer,String>>,Tuple2<String,String>>> organizationsWithMatchedAndCorrectLocation = organizationsWithMatchedLocations.joinWithTiny(seedTuples).where(0).equalTo(0).name("Join location from seed tuples onto candidate tuples");
+
+	        //Return counts of positives and negatives depending on whether matched location equals seed tuple location: <pattern_id, <#positives, #negatives>>
+	        DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithPositiveAndNegatives = organizationsWithMatchedAndCorrectLocation.map(new MapPositivesAndNegatives()).name("Return counts of positives and negatives depending on whether matched location equals seed tuple location");
+
+	        //Sum up counts of positives and negatives for each pattern id: <pattern_id, <#positives, #negatives>>
+	        DataSet<Tuple2<Integer, Tuple2<Integer, Integer>>> patternsWithSummedUpPositiveAndNegatives = patternsWithPositiveAndNegatives.groupBy(0).reduce(new ReducePositivesAndNegatives()).name("Sum up counts of positives and negatives for each pattern id");
+
+	        //Calculate pattern confidence: <pattern_id, confidence>
+	        DataSet<Tuple2<Integer, Double>> patternConfidences = patternsWithSummedUpPositiveAndNegatives.map(new CalculatePatternConfidences()).name("Calculate pattern confidence");
+
+	        //######## Find occurences of patterns in text
+	        //Compile candidate tuple list: <pattern_id, <candidate tuple, similarity>>
+	        DataSet<Tuple2<Integer, Tuple2<Tuple2<String, String>, Double>>> patternsWithTuples = textSegmentsMapped.flatMap(new CalculateBestPatternSimilarity(parameters.degreeOfMatchThreshold)).withBroadcastSet(finalPatterns, "finalPatterns").name("Calculate the similarity of the best pattern for each candidate tuple");
+
+	        //######## Make candidate tuples
+	        //Join candidate tuples with pattern confidences: <<pattern_id, <candidate tuple, similarity>>, <pattern_id, pattern_conf>>
+	        DataSet<Tuple2<Tuple2<Integer,Tuple2<Tuple2<String, String>,Double>>,Tuple2<Integer,Double>>> candidateTuplesWithPatternConfidences = patternsWithTuples.joinWithTiny(patternConfidences).where(0).equalTo(0).name("Join candidate tuples with pattern confidences");
+
+	        //Reformat to <candidate tuple, <pattern_conf, similarity>>
+	        DataSet<Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>> candidateTuples = candidateTuplesWithPatternConfidences.map(new CandidateTupleSimplifier()).name("Reformat to <candidate tuple, <pattern_conf, similarity>>");
+	        
+	        candidateTuples.writeAsCsv(parameters.output+"/candidateTuples", FileSystem.WriteMode.OVERWRITE);
+		}
+		
+		if (parameters.step == 6) {
+			DataSource<Tuple4<String, String, String, String>> candidateTuplesCsv = env.readCsvFile(parameters.inputFile).types(String.class, String.class, String.class, String.class);
+
+			DataSet<Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>> candidateTuples = candidateTuplesCsv.map(new CandidateTuplesMapper());
+			
+			
+	        //Execute tuple confidence calculation: <organization, <location, tuple confidence>>
+	        DataSet<Tuple2<String, Tuple2<String, Double>>> candidateTupleconfidencesWithOrganizationAsKey = candidateTuples.groupBy(0).reduceGroup(new CandidateTupleConfidenceCalculator()).name("Calculate candidate tuple confidences and use organization as key");
+
+	        //Filter candidate tuples by their confidence: <organization, <location, tuple confidence>>
+	        DataSet<Tuple2<String, Tuple2<String, Double>>> filteredTuples = candidateTupleconfidencesWithOrganizationAsKey.filter(new CandidateTupleConfidenceFilter(parameters.tupleConfidenceThreshold)).name("Filter candidate tuples by their confidence");
+
+	        //Filter candidate tuples by organization, choosing highest confidence: <organization, <location, tuple confidence>>
+	        DataSet<Tuple2<String, Tuple2<String, Double>>> uniqueFilteredTuples = filteredTuples.groupBy(0).reduceGroup(new UniqueOrganizationReducer()).name("Choose unique location for each organization based on highest confidence");
+
+	        //Store new seed tuples without their confidence: <organization, location>
+	        DataSet<Tuple2<String, String>> newSeedTuples = uniqueFilteredTuples.map(new SeedTuplesExtractor()).name("Store new seed tuples without their confidence");
+	        
+	        newSeedTuples.writeAsCsv(parameters.output+"/newSeedTuples", FileSystem.WriteMode.OVERWRITE);
+		}
+		
+		if (parameters.step == 7) {
+			DataSet<Tuple2<String,String>> seedTuples = env.readTextFile(parameters.seedTuples).map(new MapSeedTuplesFromStrings());
+
+			DataSource<Tuple2<String, String>> newSeedTuples = env.readCsvFile(parameters.inputFile).types(String.class, String.class);
+			
+	        DataSet<Tuple2<String, String>> mergedSeedTuples = seedTuples.union(newSeedTuples).distinct().name("Merge new seed tuples into seed tuples");
+	        
+	        mergedSeedTuples.writeAsCsv(parameters.output+"/mergedSeedTuples", FileSystem.WriteMode.OVERWRITE);
+		}
 //
 //        DataSet<Tuple2<String, String>> countedMergedSeedTuples = mergedSeedTuples.map(new CountSeedTuples()).name("Count merged seed tuples");
 //
@@ -365,6 +388,9 @@ public class App {
 		}
 
 		//Parameters
+		
+		@Parameter(names = "--step", description = "Step of algorithm", required = true)
+		public int step;
 
 		@Parameter(names = "--inputFile", description = "Input file", required = true)
 		public String inputFile;

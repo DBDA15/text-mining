@@ -3,10 +3,12 @@ package de.hpi.fgis.dbda.textmining.functions;
 import java.util.HashMap;
 import java.util.Map;
 
+import de.hpi.fgis.dbda.textmining.MainTask_flink.HashMapWithSemicolons;
+
 public class ContextMapper {
 
 	public static Map<String, Double> mapContext(String context) {
-		Map<String, Double> outputMap = new HashMap<String, Double>();
+		Map<String, Double> outputMap = new HashMapWithSemicolons<String, Double>();
 		context = context.replaceAll("\\{", "");
 		context = context.replaceAll("\\}", "");
 		context = context.replaceAll("\\(", "");

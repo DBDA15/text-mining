@@ -29,13 +29,13 @@ public class HashMapWithSemicolons<K, V> extends HashMap<K, V> {
             V value = e.getValue();
             String keyString = key.toString();
             if (keyString.contains(",")) {
-            	keyString.replace(",", "(comma)");
+            	keyString = keyString.replace(",", "(comma)");
             }
             sb.append(key   == this ? "(this Map)" : keyString);
             sb.append('=');
             String valueString = value.toString();
             if (valueString.contains(",")) {
-            	valueString.replace(",", "(comma)");
+            	valueString = valueString.replace(",", "(comma)");
             }
             sb.append(value == this ? "(this Map)" : valueString);
             if (! i.hasNext())

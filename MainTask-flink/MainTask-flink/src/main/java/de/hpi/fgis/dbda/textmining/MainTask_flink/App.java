@@ -146,7 +146,7 @@ public class App {
 	        
 	        DataSet<Tuple5<Map,String,Map,String,Map>> rawPatternsMapped = rawPatterns.map(new RawPatternsMapper());
 	        
-	        System.out.println(rawPatternsMapped.count());
+	        rawPatternsMapped.print();
 ////	        
 ////	        rawPatternsMapped.writeAsText(parameters.output+"/tmp", FileSystem.WriteMode.OVERWRITE);
 //	        
@@ -161,7 +161,7 @@ public class App {
 			
 			DataSet<Tuple2<Tuple5<Map, String, Map, String, Map>, Integer>> clusterCentroidsMapped = clusterCentroids.map(new ClusterCentroidsMapper());
 			
-			System.out.println(clusterCentroidsMapped.count());
+			clusterCentroidsMapped.print();
 	
 //	        //Cluster the centroids from all partitions
 //	        DataSet<Tuple5<Map,String,Map,String,Map>> finalPatterns = clusterCentroidsMapped.reduceGroup(new ClusterCentroids(parameters.similarityThreshold, parameters.minimalClusterSize)).name("Cluster the cluster centroids");
@@ -172,7 +172,7 @@ public class App {
 		if (parameters.step == 4) {
 			sentencesWithTags = env.readFileOfPrimitives(parameters.inputFile, String.class);
 			
-			System.out.println(sentencesWithTags.count());
+			sentencesWithTags.print();
 			
 //		    //Search sentences for occurrences of the two entity tags
 //		    //Returns: List of <tuple, context>
@@ -189,13 +189,13 @@ public class App {
 			
 			DataSet<Tuple5<Map, String, Map, String, Map>> finalPatterns = finalPatternsCsv.map(new RawPatternsMapper());
 			
-			//System.out.println(finalPatterns.count());
+			//finalPatterns.print();
 			
 			DataSource<Tuple7<String, String, String, String, String, String, String>> textSegments = env.readCsvFile(parameters.inputFile2).types(String.class, String.class, String.class, String.class, String.class, String.class, String.class);
 
 			DataSet<Tuple2<Tuple2<String, String>, Tuple5<Map, String, Map, String, Map>>> textSegmentsMapped = textSegments.map(new TextSegmentMapper());
 			
-			System.out.println(textSegmentsMapped.count());
+			textSegmentsMapped.print();
 			
 //	        //######## Generate pattern confidences
 //		    //Generate <organization, <pattern_id, location>> when the pattern generated the tuple
@@ -232,7 +232,7 @@ public class App {
 
 			DataSet<Tuple2<Tuple2<String, String>, Tuple2<Double, Double>>> candidateTuples = candidateTuplesCsv.map(new CandidateTuplesMapper());
 			
-			System.out.println(candidateTuples.count());
+			candidateTuples.print();
 			
 //	        //Execute tuple confidence calculation: <organization, <location, tuple confidence>>
 //	        DataSet<Tuple2<String, Tuple2<String, Double>>> candidateTupleconfidencesWithOrganizationAsKey = candidateTuples.groupBy(0).reduceGroup(new CandidateTupleConfidenceCalculator()).name("Calculate candidate tuple confidences and use organization as key");
@@ -254,7 +254,7 @@ public class App {
 
 			DataSource<Tuple2<String, String>> newSeedTuples = env.readCsvFile(parameters.inputFile).types(String.class, String.class);
 			
-			System.out.println(newSeedTuples.count());
+			newSeedTuples.print();
 			
 //	        DataSet<Tuple2<String, String>> mergedSeedTuples = seedTuples.union(newSeedTuples).distinct().name("Merge new seed tuples into seed tuples");
 //	        
@@ -298,7 +298,7 @@ public class App {
             RemoteCollectorImpl.shutdownAll();
         }
 		long endTime = System.currentTimeMillis();
-		System.out.format("Execution finished after %.3f s.\n", (endTime - startTime) / 1000d);
+		System.err.format("Execution finished after %.3f s.\n", (endTime - startTime) / 1000d);
 	}
 
     /**

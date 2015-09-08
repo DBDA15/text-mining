@@ -45,23 +45,23 @@ $SIMILARITY_THRESHOLD --tupleConfidenceThreshold $TUPLE_CONFIDENCE_THRESHOLD
 --output $OUTPUT_PATH --seedTuples $PATH_TO_SEED_TUPLES $INPUT_FILES
 ```
 
-where the variables mean the following:
+where the variables mean the following (with values we used in our experiments in brackets for algorithm specific parameters):
 
 $PATH_TO_FLINK: the path to your flink executable.
 
 $PARALLELISM: the number of workers your program is run on.
 
-$WINDOWSIZE: the windows of words that belong to a tuple context.
+$WINDOWSIZE: the windows of words that belong to a tuple context. (5)
 
-$MINIMAL_CLUSTER_SIZE: the minimal amount of patterns a cluster should consist of to be used further.
+$MINIMAL_CLUSTER_SIZE: the minimal amount of patterns a cluster should consist of to be used further. (5)
 
-$DEGREE_OF_MATCH_THRESHOLD: the similarity threshold for matching patterns with tuple contexts.
+$DEGREE_OF_MATCH_THRESHOLD: the similarity threshold for matching patterns with tuple contexts. (0.6)
 
-$SIMILARITY_THRESHOLD: the similarity threshold for clustering the patterns.
+$SIMILARITY_THRESHOLD: the similarity threshold for clustering the patterns. (0.4)
 
-$TUPLE_CONFIDENCE_THRESHOLD: the confidence threshold for filtering out candidate tuples.
+$TUPLE_CONFIDENCE_THRESHOLD: the confidence threshold for filtering out candidate tuples. (0.9)
 
-$MAX_DISTANCE: the maximum distance between found Organizations and Locations.
+$MAX_DISTANCE: the maximum distance between found Organizations and Locations. (5)
 
 $ITERATIONS: the number of iterations the algorithm is run.
 

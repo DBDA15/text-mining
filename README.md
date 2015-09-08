@@ -22,7 +22,7 @@ $SPARK_MASTER: the address of the spark master node.
 
 $OUTPUT_PATH: the path to write the ouput (Organization, Location tuples) to.
 
-$PATH_TO_SEED_TUPLES: the path to the seed tuples the algorithm needs. These should be a tsv file with the format ORG \t LOC
+$PATH_TO_SEED_TUPLES: the path to the seed tuples the algorithm needs. These should be a tsv file with the format ORG \t LOC.
 
 $INPUT_FILES: a arbitrary number of input files. In our tests the New York Times archive was used. The files should already be NER tagged and split into one sentence per line.
 
@@ -60,6 +60,6 @@ $ALREADY_TAGGED: use the --alreadyTagged flag if the input files are already spl
 
 $OUTPUT_PATH: the path to write the ouput (Organization, Location tuples) to.
 
-$PATH_TO_SEED_TUPLES: the path to the seed tuples the algorithm needs. These should be a tsv file with the format ORG \t LOC
+$PATH_TO_SEED_TUPLES: the path to the seed tuples the algorithm needs. These should be a tsv file with the format ORG \t LOC.
 
 $INPUT_FILES: a arbitrary number of input files. In our tests the New York Times archive was used. The files should already be NER tagged and split into one sentence per line.

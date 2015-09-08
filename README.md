@@ -1,6 +1,6 @@
 # text-mining
 
-This project is an implementation of the [Snowball algorithm](http://www.cs.columbia.edu/~gravano/Papers/2000/dl00.pdf) on the distributed data processing platforms Apache Spark and Apache Flink.
+This project is an implementation of the [Snowball algorithm](http://www.cs.columbia.edu/~gravano/Papers/2000/dl00.pdf) on the distributed data processing platforms [Apache Spark](https://spark.apache.org/) and [Apache Flink](https://flink.apache.org/).
 
 ## Spark
 
@@ -15,10 +15,15 @@ $PATH_TO_SPARK_SUBMIT --total-executor-cores $EXECUTOR_CORES --class de.hpi.fgis
 where the variables mean the following:
 
 $PATH_TO_SPARK_SUBMIT: the path to your spark submit executable.
+
 $EXECUTOR_CORES: the number of workers your program is run on.
+
 $SPARK_MASTER: the address of the spark master node. 
+
 $OUTPUT_PATH: the path to write the ouput (Organization, Location tuples) to.
+
 $PATH_TO_SEED_TUPLES: the path to the seed tuples the algorithm needs. These should be a tsv file with the format ORG \t LOC
+
 $INPUT_FILES: a arbitrary number of input files. In our tests the New York Times archive was used. The files should already be NER tagged and split into one sentence per line.
 
 ## Flink
@@ -34,15 +39,27 @@ $PATH_TO_FLINK run --parallelism $PARALLELISM --class de.hpi.fgis.dbda.textminin
 where the variables mean the following:
 
 $PATH_TO_FLINK: the path to your flink executable.
+
 $PARALLELISM: the number of workers your program is run on.
+
 $WINDOWSIZE: the windows of words that belong to a tuple context.
+
 $MINIMAL_CLUSTER_SIZE: the minimal amount of patterns a cluster should consist of to be used further.
+
 $DEGREE_OF_MATCH_THRESHOLD: the similarity threshold for matching patterns with tuple contexts.
+
 $SIMILARITY_THRESHOLD: the similarity threshold for clustering the patterns.
+
 $TUPLE_CONFIDENCE_THRESHOLD: the confidence threshold for filtering out candidate tuples.
+
 $MAX_DISTANCE: the maximum distance between found Organizations and Locations.
+
 $ITERATIONS: the number of iterations the algorithm is run.
+
 $ALREADY_TAGGED: use the --alreadyTagged flag if the input files are already split into sentences and NER tagged.
+
 $OUTPUT_PATH: the path to write the ouput (Organization, Location tuples) to.
+
 $PATH_TO_SEED_TUPLES: the path to the seed tuples the algorithm needs. These should be a tsv file with the format ORG \t LOC
+
 $INPUT_FILES: a arbitrary number of input files. In our tests the New York Times archive was used. The files should already be NER tagged and split into one sentence per line.

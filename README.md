@@ -9,7 +9,9 @@ In order to use the Spark version of the implementation cd into MainTask-spark/M
 Then you can use the following command to start the program:
 
 ```
-$PATH_TO_SPARK_SUBMIT --total-executor-cores $EXECUTOR_CORES --class de.hpi.fgis.dbda.textmining.maintask.App --master $SPARK_MASTER target/maintask-0.0.1-SNAPSHOT.jar $OUTPUT_PATH $PATH_TO_SEED_TUPLES $INPUT_FILES
+$PATH_TO_SPARK_SUBMIT --total-executor-cores $EXECUTOR_CORES 
+--class de.hpi.fgis.dbda.textmining.maintask.App --master $SPARK_MASTER 
+target/maintask-0.0.1-SNAPSHOT.jar $OUTPUT_PATH $PATH_TO_SEED_TUPLES $INPUT_FILES
 ```
 
 where the variables mean the following:
@@ -33,7 +35,14 @@ In order to use the Flink version of the implementation cd into MainTask-flink/M
 Then you can use the following command to start the program:
 
 ```
-$PATH_TO_FLINK run --parallelism $PARALLELISM --class de.hpi.fgis.dbda.textmining.MainTask_flink.App target/MainTask-flink-0.0.1-SNAPSHOT-flink-fat-jar.jar --windowSize $WINDOWSIZE --minimalClusterSize $MINIMAL_CLUSTER_SIZE --degreeOfMatchThreshold $DEGREE_OF_MATCH_THRESHOLD --similarityThreshold $SIMILARITY_THRESHOLD --tupleConfidenceThreshold $TUPLE_CONFIDENCE_THRESHOLD --maxDistance $MAX_DISTANCE --iterations $ITERATIONS $ALREADY_TAGGED --output $OUTPUT_PATH --seedTuples $PATH_TO_SEED_TUPLES $INPUT_FILES
+$PATH_TO_FLINK run --parallelism $PARALLELISM --class 
+de.hpi.fgis.dbda.textmining.MainTask_flink.App 
+target/MainTask-flink-0.0.1-SNAPSHOT-flink-fat-jar.jar 
+--windowSize $WINDOWSIZE --minimalClusterSize $MINIMAL_CLUSTER_SIZE 
+--degreeOfMatchThreshold $DEGREE_OF_MATCH_THRESHOLD --similarityThreshold 
+$SIMILARITY_THRESHOLD --tupleConfidenceThreshold $TUPLE_CONFIDENCE_THRESHOLD 
+--maxDistance $MAX_DISTANCE --iterations $ITERATIONS $ALREADY_TAGGED 
+--output $OUTPUT_PATH --seedTuples $PATH_TO_SEED_TUPLES $INPUT_FILES
 ```
 
 where the variables mean the following:
